@@ -44,7 +44,7 @@ DB_NCBI_GENEID_COL = None
 Y_AXIS = {'database_name': "Signal"}
 
 # Check if lookup exists
-LOOKUP = {'little_millet': "0"}
+LOOKUP = {'database_name': "0"}
 
 # initial gene ids when start page is loaded.
 GENE_ID_DEFAULT1 = ''
