@@ -1,0 +1,20 @@
+Version 1.5.0
+- restructuring of code to satisfy object oriented paradigm and make changes / extensions much easier
+- extract configuration parameters to efpConfig file to easily adapt application to local environments
+- added ortholog/expressolog support
+- unified position parameters for legend and graph in the XML file (the reference is now always the 
+  upper left corner of the image) -> check your existing XML configuration files!!
+
+Version 1.1.0
+
+- general cleanup of code to remove redundancy and intensify the usage of object oriented paradigma; 
+  improved performance while creating the eFP image
+- added bar chart with expression values
+- added possibility to check external web services for additional information about entered gene 
+  (with linkouts to a corresponding web page)
+- access external expression data source via webservice instead of local database
+- added web service to get eFP image and expression chart via JSON request
+
+Version 1.0.0
+- first packaged version
+
