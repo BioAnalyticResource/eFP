@@ -941,7 +941,6 @@ class View:
             if gene2.get_probeset_id():
                 draw.text(self.conf['GENE_PROBESET2_POS'], gene2.get_probeset_id(), font=font_small, fill=color)
 
-        displace_x = int(self.graph[0])
         displace_y = int(self.graph[1])
         height = int(self.graph[3])
         bottom = displace_y
@@ -1098,7 +1097,7 @@ class SpecimenHandler(ContentHandler):
                 legend_size = int(attrs.getValueByQName('legend_size'))
                 if legend_size < 8:
                     legend_size = 8
-            except:
+            except KeyError:
                 pass
             self.currentView.add_graph_coords(graph)
             self.currentView.add_legend_coords(legend)
