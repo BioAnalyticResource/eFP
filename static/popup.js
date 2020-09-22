@@ -55,8 +55,8 @@ function getPageHeight() {
 
 	let windowHeight = getWindowHeight();
 	let pageHeight;
-	if (pagescroll < winHeight) {
-		pageHeight = winHeight;
+	if (pagescroll < windowHeight) {
+		pageHeight = windowHeight;
 	} else {
 		pageHeight = pagescroll;
 	}
@@ -120,9 +120,7 @@ function lightbox(target) {
 function loadPopup(popupId, popup_content, popup_bgcolor, popup_width) {
     if (popupId == null)
         popupId = "popup_message";
-	let popupStyleLeft;
 
-	const popupStyleBorder = "solid medium #000000";
 	const popupStyleVisibility = "hidden";
 	const pageheight = getPageHeight();
 	document.write('<div id="lightbox_div" style="width:100%;height:' + pageheight + 'px;' +
@@ -175,7 +173,7 @@ function popup(popupId, effect, popup_top, delay) {
             DropDownEffect(popupElem, popupStyleTop, 10);
         }
     } else if (effect === "fadein") {
-        popupElem.fade = 0
+        popupElem.fade = 0;
         popupElem.style.top = popupStyleTop + "px";
         if (delay > 0) {
             setTimeout("fadeIn(document.getElementById(\"" + popupId + "\"))", delay);

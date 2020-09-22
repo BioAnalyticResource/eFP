@@ -80,7 +80,7 @@ dc = {
         };
         o.onclick = function () {
             return false;
-        }
+        };
     },
     /* Doesn't work with Safari
     hover:function(e){
@@ -90,7 +90,6 @@ dc = {
     },
     */
     addCollapse: function (e) {
-		let action, pic;
 		// hack to fix safari's redraw bug
         // as mentioned on http://en.wikipedia.org/wiki/Wikipedia:Browser_notes#Mac_OS_X
         if (self.screenTop && self.screenX) {
