@@ -44,7 +44,7 @@ function getScrollHeight() {
 }
 
 function getPageHeight() {
-	let pagescroll, winHeight;
+	let pagescroll;
 	if (window.innerHeight && window.scrollMaxY) {
         pagescroll = window.innerHeight + window.scrollMaxY;
     } else if (document.body.scrollHeight > document.body.offsetHeight) {
