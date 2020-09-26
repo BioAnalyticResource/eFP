@@ -269,7 +269,14 @@ if mode and error == 0:
         print('<input type="button" name="expressionchart" value="Click Here for Chart of Expression Values" onclick="popup(\'chart%d\', \'fadein\', \'center\', 0, 1)">' % (
                 view_no))
         print('<script type="text/javascript">')
-        popup_content = '<span style="color:#000000"><b>For table download right click <a href="%s">here</a> and select "Save Link As ..."</b></span>' % table_file_name
+        popup_content = '<span style="color:#000000;"><b>For table download right click <a href="%s">here</a> and select "Save Link As ..."</b></span>' % table_file_name
+
+        # Add Genes
+        if primaryGene is not None and primaryGene != '':
+            popup_content += '<br><br><span style="color:#000000;"><b>' + primaryGene + '</b></span><br>'
+        if mode == "Compare" and secondaryGene is not None and secondaryGene != '':
+            popup_content += '<span style="color:#000000;"><b>' + secondaryGene + '</b></span><br>'
+
         popup_content += '<div class="closewin_text">'
         popup_content += '<a href="" onclick="popdown(\\\'table%d\\\');return false;">' % (view_no)
         popup_content += '<span style="color:#000000">[Close]</span></a><br><br>'
@@ -294,7 +301,15 @@ if mode and error == 0:
         popup_content += '<span style="color:#000000">[Zoom -]</span></a><br>'
         popup_content += '<a href="" onclick="zoomElement(\\\'image%d\\\', 0);return false;">' % view_no
         popup_content += '<span style="color:#000000">[Reset<br>zoom]</span></a></div>'
-        popup_content += '<div class="chart"><img id="image%d" height="580px" src="%s"><br></div>' % (
+        popup_content += '<div class="chart">'
+
+        # Add Genes
+        if primaryGene is not None and primaryGene != '':
+            popup_content += '<br><br><span style="color:#000000;"><b>' + primaryGene + '</b></span><br>'
+        if mode == "Compare" and secondaryGene is not None and secondaryGene != '':
+            popup_content += '<span style="color:#000000;"><b>' + secondaryGene + '</b></span><br>'
+
+        popup_content += '<img id="image%d" height="580px" src="%s"><br></div>' % (
             view_no, tableChart_name)
         print("loadPopup(\'chart%d\',\'%s\',\'%s\',%s);" % (view_no, popup_content, bg_color, popup_width))
         print("</script>")
