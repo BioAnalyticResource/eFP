@@ -12,7 +12,6 @@ from lxml import etree
 from xml.sax.handler import ContentHandler
 from . import efpBase
 from . import efpDb
-# import sys
 
 # set HOME environment variable to a directory the httpd server can write to (for matplotlib)
 os.environ['HOME'] = '/tmp/'
@@ -125,12 +124,16 @@ class Tissue:
         mean = 0.0
         i = 0
         num_samples = len(self.samples)
+
         while i < num_samples:
             signal = self.samples[i].get_signal(gene)
-            if signal is not  None:
+            if signal is None:
+                return None, None
+            else:
                 values.append(signal)
                 mean += signal
                 i += 1
+
         mean /= num_samples
         stddev = math.sqrt(sum([(x - mean) ** 2 for x in values]) / num_samples)
         stddev = math.floor(stddev * 100) / 100
@@ -158,8 +161,11 @@ class Group:
         num_samples = len(self.ctrl_samples)
 
         while i < num_samples:
+            if self.ctrl_samples[i].get_signal(gene, 1) is None:
+                return None
             mean += self.ctrl_samples[i].get_signal(gene, 1)  # 1 says: get signal for sample as control sample
             i += 1
+
         mean /= num_samples
         mean = round(mean, 3)
 
@@ -235,7 +241,7 @@ class View:
         during calculations. Added condition to check if signal is zero. If signal/control != 0,
         signal = abs(math.log(signal/control)/math.log(2)), else signal = 0
         @param gene:
-        @param ratio:
+        @param ratio: boolean
         @param gene2:
         @return:
         """
@@ -244,34 +250,39 @@ class View:
         view_max_signal2 = 0.0
         for group in self.groups:
             control = group.get_control_signal(gene)
-            if gene2:
+            if gene2 is not None:
                 control2 = group.get_control_signal(gene2)
             for tissue in group.tissues:
                 (signal, stddev) = tissue.get_mean_signal(gene)
-                if signal > view_max_signal1:
+                if (signal is not None) and (signal > view_max_signal1):
                     view_max_signal1 = signal
                 if ratio:
                     if control == 0:
                         signal = 0
                     else:
-                        if signal != 0:
-                            signal = abs(math.log(signal / control) / math.log(2))
-                if gene2:
+                        if signal is not None:
+                            if signal != 0:
+                                signal = abs(math.log(signal / control) / math.log(2))
+                if gene2 is not None:
                     (signal2, stddev2) = tissue.get_mean_signal(gene2)
                     if signal2 > view_max_signal2:
                         view_max_signal2 = signal2
                     if signal2 == 0:
                         view_max_signal2 = 0
-                    if control == 0 or control2 == 0:
+                    if (control == 0) or (control2 == 0):
                         signal = 0
                     else:
-                        if signal != 0 or signal2 != 0:
-                            signal = math.log((signal / control) / (signal2 / control2)) / math.log(2)
+                        if (signal is not None) and (signal2 is not None) \
+                                and (signal != 0) and (signal2 != 0):
+                            try:
+                                signal = math.log((signal / control) / (signal2 / control2)) / math.log(2)
+                            except (ValueError, ZeroDivisionError):
+                                signal = 0
                 if view_max_signal == 0:
-                    if abs(signal) > view_max_signal:
+                    if (signal is not None) and (abs(signal) > view_max_signal):
                         view_max_signal = abs(signal)
                 else:
-                    if signal > view_max_signal:
+                    if (signal is not None) and (signal > view_max_signal):
                         view_max_signal = signal
 
         # assign the efp_max signal for legend
@@ -318,9 +329,16 @@ class View:
         @return:
         """
         signal_dict = {}
-        val_floor = math.floor(value * 100) / 100
+
+        if value is None:
+            val_floor = None
+        else:
+            val_floor = math.floor(value * 100) / 100
+
         self.table += '<tr class=r%s><td>%s</td><td>%s</td>' % ((n % 2), n, tissue.name)
+
         signal_dict['group'] = n
+
         if (sample_sig is not None) and (control_sig is not None):
             sample_sig_floor = math.floor(sample_sig * 100) / 100
             control_sig_floor = math.floor(control_sig * 100) / 100
@@ -330,19 +348,29 @@ class View:
         else:
             self.table += '<td align=right>%s</td>' % val_floor
             signal_dict['sample_sig'] = val_floor
+
         # Fold Change for Relative and Compare Modes
         if ratio:
-            fold = math.floor(math.pow(2, value) * 100) / 100
-            self.table += '<td align=right>%s</td>' % fold
-            signal_dict['ratio'] = fold
+            if value is not None:
+                fold = math.floor(math.pow(2, value) * 100) / 100
+                self.table += '<td align=right>%s</td>' % fold
+                signal_dict['ratio'] = fold
+            else:
+                fold = None
+                self.table += '<td align=right>%s</td>' % fold
+                signal_dict['ratio'] = fold
         else:
             self.table += '<td align=right>%s</td>' % (stddev)
             signal_dict['stddev'] = stddev
+
         self.table += '<td>'
+
         for sample in tissue.samples:
             self.table += '%s,' % sample.name
+
         signal_dict['samplename'] = tissue.name
         signal_dict['signalcolor'] = color
+
         self.signals.append(signal_dict)
         self.table += '</td><td><A target="_blank" href=%s>To the Experiment</A></td></tr>\n' % tissue.url
 
@@ -461,6 +489,8 @@ class View:
         signal = math.log(signal / control) / math.log(2)
         """
         out = '<map name="imgmap_%s">' % self.name
+
+        # Note zero_gene feature of eFP Human is not implemented yet
         for extra in self.extras:
             if extra.parameters:
                 if useT is None:
@@ -514,25 +544,36 @@ class View:
             for tissue in group.tissues:
                 (signal, stddev) = tissue.get_mean_signal(gene1)
                 if mode == "Absolute":
-                    sig_floor = math.floor(signal * 100)
-                    sig_string = "Level: %s, SD: %s" % (sig_floor / 100, stddev)
+                    if signal is None:
+                        sig_string = "No data available"
+                    else:
+                        sig_floor = math.floor(signal * 100)
+                        sig_string = "Level: %s, SD: %s" % (sig_floor / 100, stddev)
                 else:
-                    if control == 0:
-                        signal = 0
-                    elif signal != 0:
+                    if (signal != 0) and (signal is not None):
                         signal = math.log(signal / control) / math.log(2)
 
                     if mode == "Compare":
                         (value2, stddev2) = tissue.get_mean_signal(gene2)
                         signal2 = 0
-                        if control2 == 0:
-                            signal = 0
-                        elif value2 != 0:
+                        if (value2 != 0) and (signal != 0) and (signal is not None) and (value2 is not None):
                             signal2 = math.log(value2 / control2) / math.log(2)
                             signal = signal - signal2
-                    sig_floor = math.floor(signal * 100) / 100
-                    fold = math.floor(math.pow(2, signal) * 100) / 100
-                    sig_string = "Log2 Value: %s, Fold-Change: %s" % (sig_floor, fold)
+                        # Logic from Human eFP
+                        if (signal is not None) and (signal2 is not None) and (value2 is not None):
+                            sig_floor = math.floor(signal * 100) / 100
+                            fold = math.floor(math.pow(2, signal) * 100) / 100
+                            sig_string = "Log2 Value: %s, Fold-Change: %s" % (sig_floor, fold)
+                        else:
+                            sig_string = "No data available"
+
+                    if (mode != "Compare") and (signal is not None):
+                        sig_floor = math.floor(signal * 100) / 100
+                        fold = math.floor(math.pow(2, signal) * 100) / 100
+                        sig_string = "Log2 Value: %s, Fold-Change: %s" % (sig_floor, fold)
+                    elif (mode != "Compare") and (signal is None):
+                        sig_string = "No data available"
+
                 for coords in tissue.coords:
                     out += '<area shape="polygon" coords="%s" title="%s \n%s" href="%s">\n' % (
                         coords, tissue.name, sig_string, tissue.url)
@@ -598,7 +639,7 @@ class View:
             signal_output = " "
 
             # If we're at either the top or the bottom row of the legend, edit the
-            # output string to include less than or greater than signs    
+            # output string to include less than or greater than signs
             if y == 0 and greater_than:
                 signal_output += "> "
             elif y == stages - 1 and less_than:
@@ -663,8 +704,9 @@ class View:
             efp_max = self.conf['minThreshold_Compare']
         else:
             # If the user doesn't give us a reasonable value for threshold,
-            # use the maximum signal from dbGroup for this gene            
+            # use the maximum signal from dbGroup for this gene
             efp_max = max_signal
+
         intensity = 0  # Cast as int
         log2 = math.log(2)
 
@@ -683,20 +725,30 @@ class View:
                 ratio2_log = 0
 
                 (sig1, stddev1) = tissue.get_mean_signal(gene1)
-                if sig1 != 0 and control1 != 0:
+                if (sig1 is not None) and (sig1 != 0):
                     ratio1_log = math.log(sig1 / control1) / log2
+                elif sig1 is None:
+                    ratio1_log = None
+                else:
+                    ratio1_log = 0
 
                 (sig2, stddev2) = tissue.get_mean_signal(gene2)
-                if sig2 != 0 and control2 != 0:
+                if (sig2 is not None) and (sig2 != 0):
                     ratio2_log = math.log(sig2 / control2) / log2
-
-                if efp_max == 0:
-                    intensity = 0
+                elif sig2 is None:
+                    ratio2_log = None
                 else:
-                    intensity = int((ratio1_log - ratio2_log) * 255.0 / efp_max)
-                intensity = clamp(intensity, -255, 255)
+                    ratio2_log = 0
 
-                if intensity > 0:
+                if (ratio1_log is not None) and (ratio2_log is not None):
+                    intensity = int((ratio1_log - ratio2_log) * 255.0 / efp_max)
+                    intensity = clamp(intensity, -255, 255)
+                else:
+                    intensity = None
+
+                if intensity is None:
+                    color = (221, 221, 221)
+                elif intensity > 0:
                     # Map values above equal point to [yellow, red]
                     color = (255, 255 - intensity, 0)
                 else:
@@ -704,9 +756,11 @@ class View:
                     color = (255 + intensity, 255 + intensity, - intensity)
 
                 # Add to developing Table of Expression Values
-                self.append_table(tissue, ratio1_log - ratio2_log, n, True, None, None, None, tissue.colorKey)
+                if ratio1_log is None or ratio2_log is None:
+                    self.append_table(tissue, None, n, True, None, None, None, tissue.colorKey)
+                else:
+                    self.append_table(tissue, ratio1_log - ratio2_log, n, True, None, None, None, tissue.colorKey)
                 out_image.replaceFill(self.colorMap, tissue.colorKey, color)
-
             n += 1
 
         # Complete Table of Expression Values
@@ -734,7 +788,7 @@ class View:
                 max_greater = True
         else:
             # If the user doesn't give us a reasonable value for threshold,
-            # use the maximum signal from dbGroup for this gene            
+            # use the maximum signal from dbGroup for this gene
             efp_max = max_signal
 
         n = 1
@@ -749,22 +803,35 @@ class View:
                     continue
 
                 (signal, stddev) = tissue.get_mean_signal(gene)
-                if efp_max != 0:
-                    intensity = int(math.floor(signal * 255.0 / efp_max))
+                if signal is None:
+                    color = (221, 221, 221)
+                elif signal != 0:
+                    if efp_max != 0:
+                        intensity = int(math.floor(signal * 255.0 / efp_max))
                 else:
                     intensity = 0
+                    signal = 0
 
                 # Grey out expression levels with high standard deviations
-                if signal != 0 and stddev / signal > 0.5 and grey_mask == 'on':
+                if signal is None:
+                    color = (221, 221, 221)
+                elif signal != 0 and stddev / signal > 0.5 and grey_mask == 'on':
                     color = (221, 221, 221)  # CCCCCC
                 else:
                     # Otherwise, color appropriately
                     color = (255, 255 - intensity, 0)
 
                 # Add to developing Table of Expression Values
-                self.append_table(tissue, signal, n, False, stddev, None, None, tissue.colorKey)
+                if signal is None:
+                    table_signal = 0
+                    table_stddev = 0
+                    self.append_table(tissue, table_signal, n, False, table_stddev, None, None, tissue.colorKey)
+                else:
+                    self.append_table(tissue, signal, n, False, stddev, None, None, tissue.colorKey)
                 # pass an alert back to the user otherwise
-                if signal != 0 and stddev / signal > 0.5 and grey_mask != 'on':
+                if signal is None:
+                    sd_alert = 1
+                elif signal != 0 and stddev / signal > 0.5 and grey_mask != 'on':
                     sd_alert = 1
 
                 # Perform fast color replacement
@@ -821,30 +888,43 @@ class View:
                 # Some sample signals in the Root DB are equal to 0 (no signal), and cause errors during calculations.
                 if signal == 0 or control == 0:
                     ratio_log2 = 0
-                else:
+                elif signal is not None:
                     ratio_log2 = math.log(signal / control) / log2
-
-                if max_log2 != 0:
-                    intensity = int(math.floor(255 * (ratio_log2 / max_log2)))
                 else:
-                    intensity = 0
+                    ratio_log2 = None
 
-                intensity = clamp(intensity, -255, 255)
+                if max_log2 == 0:
+                    intensity = 0
+                elif (signal is None) or (ratio_log2 is None):
+                    color = (221, 221, 221)
+                elif signal is not None:
+                    intensity = int(math.floor(255 * (ratio_log2 / max_log2)))
+                    intensity = clamp(intensity, -255, 255)
 
                 # Grey out low expression levels
-                if signal <= 20 and grey_mask == 'on':
+                if signal is None:
+                    color = (221, 221, 221)
+                elif signal <= 20 and grey_mask == 'on':
                     color = (221, 221, 221)  # CCCCCC
                 # Otherwise, color appropriately
-                elif intensity > 0:
+                elif (intensity > 0) and (signal is not None):
                     color = (255, 255 - intensity, 0)
                 else:
                     color = (255 + intensity, 255 + intensity, - intensity)
 
                 # Add to developing Table of Expression Values
-                self.append_table(tissue, ratio_log2, n, True, None, signal, control, tissue.colorKey)
+                if signal is None:
+                    ratio_log2 = 0
+                    signal = 0
+                    control = 0
+                    self.append_table(tissue, ratio_log2, n, True, None, signal, control, tissue.colorKey)
+                else:
+                    self.append_table(tissue, ratio_log2, n, True, None, signal, control, tissue.colorKey)
 
                 # Alert the user if low filter turned off
-                if signal <= 20 and grey_mask != 'on':
+                if signal is None:
+                    low_alert = 1
+                elif signal <= 20 and grey_mask != 'on':
                     low_alert = 1
 
                 out_image.replaceFill(self.colorMap, tissue.colorKey, color)
@@ -1007,26 +1087,31 @@ class View:
         """
         # overall efp_max signal across all data sources
         overall_max = 0
+        max_signal = 0
         max_data_source = ''
+        max_sample = ''
+
         for data_source in self.conf['groupDatasource'][self.dbGroup]:
             if data_source == self.name:
-                max_signal = self.get_max_signal(gene)
-                if max_signal is None:
-                    max_signal = 0
+                max_signal, max_sample = self.get_max_signal(gene)
             else:
                 spec = Specimen(self.conf)
                 spec.load("%s/%s.xml" % (self.conf['dataDir'], data_source))
                 view = list(spec.get_views().values())[0]  # take first view in account for efp_max signal
                 gene = view.alter_gene(gene)
-                max_signal = view.get_max_signal(gene)
-                if max_signal is None:
-                    max_signal = 0
+                if gene is not None:
+                    max_signal, max_sample = view.get_max_signal(gene)
 
-            if max_signal >= overall_max:
+            # Now get the data source name for that sample.
+            # This is needed if multiple XML files share the same data source! Example: eFP Human
+            # Otherwise eFP shows wrong data source for  max signal
+            if (max_sample is not None) and (max_signal >= overall_max):
                 overall_max = max_signal
-                max_data_source = data_source
+                with open("%s/%s.xml" % (self.conf['dataDir'], data_source)) as f:
+                    if max_sample in f.read():
+                        max_data_source = data_source
 
-        return overall_max, self.conf['groupDatasourceName'][self.dbGroup][max_data_source]
+        return overall_max, max_data_source
 
     def get_max_signal(self, gene):
         if self.conn is None:
@@ -1034,11 +1119,19 @@ class View:
 
         # select the efp_max data signal in this datasource
         cursor = self.conn.cursor()
-        cursor.execute("SELECT MAX(data_signal) FROM " + self.conf['DB_DATA_TABLE'] + " WHERE data_probeset_id=%s",
-                       (gene.get_probeset_id(),))
-        efp_max = cursor.fetchone()[0]
+        cursor.execute("SELECT data_signal, data_bot_id FROM sample_data WHERE (data_probeset_id=%s OR data_probeset_id=%s) \
+         ORDER BY data_signal DESC LIMIT 1", (gene.get_probeset_id(), gene.get_gene_id()))
+        row = cursor.fetchone()
+
+        if row is not None:
+            efp_max = row[0]
+            sample = row[1]
+        else:
+            efp_max = 0
+            sample = None
+
         cursor.close()
-        return efp_max
+        return efp_max, sample
 
     def connect(self):
         try:
@@ -1057,6 +1150,7 @@ class View:
         :param gene:
         :return:
         """
+        gene.webservice_gene = gene.gene_id
         return gene
 
     def alter_webservice_gene(self, gene):
@@ -1065,6 +1159,7 @@ class View:
         :param gene:
         :return:
         """
+        gene.webservice_gene = gene.gene_id
         return gene
 
 
@@ -1084,7 +1179,7 @@ class SpecimenHandler(ContentHandler):
                 view_class = "View"
             self.sampleDict = {}
             exec(
-                "self.currentView = %s(attrs.getValueByQName('name'), attrs.getValueByQName('db'), attrs.get('dbGroup'), '%s/' + attrs.getValueByQName('img'), self.conf)" % (
+                "self.currentView = %s(attrs.getValueByQName('name'), attrs.getValueByQName('db'), attrs.getValueByQName('dbGroup'), '%s/' + attrs.getValueByQName('img'), self.conf)" % (
                     view_class, self.conf['dataDir']))
 
         if name == 'coords':

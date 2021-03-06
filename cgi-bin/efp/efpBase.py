@@ -16,8 +16,8 @@ import tempfile
 from . import efp, efpService, efpDb
 
 
-def processRequest(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, mode, useThreshold, grey_low,
-                   grey_stddev, conf):
+def process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, mode, useThreshold, grey_low,
+                    grey_stddev, conf):
     """
     Handles request for main web view and returns a dictionary with all values
     to be displayed
