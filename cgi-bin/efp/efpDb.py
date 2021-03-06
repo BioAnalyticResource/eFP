@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import re
 import MySQLdb
+import sys
 
 
 class Gene:
@@ -182,7 +183,13 @@ class Gene:
 
             select_cmd = "SELECT annotation FROM `%s` WHERE `%s`=%%s AND date = (SELECT MAX(date) FROM `%s`)" % \
                          (self.conf['DB_ANNO_TABLE'], self.conf['DB_ANNO_GENEID_COL'], self.conf['DB_ANNO_TABLE'])
-            cursor.execute(select_cmd, (self.gene_id,))
+
+            # Exception for Human
+            if self.conf['species'] == 'HUMAN':
+                cursor.execute(select_cmd, (self.probeset_id,))
+            else:
+                cursor.execute(select_cmd, (self.gene_id,))
+
             result = cursor.fetchone()
             
             if result:

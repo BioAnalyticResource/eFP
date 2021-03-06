@@ -54,7 +54,7 @@ class Service:
         if link == '':
             return 'Yes'  # return Yes, if no url defined
 
-        link = re.sub("GENE", gene, link)
+        link = re.sub(r"GENE", gene, link)
 
         try:
             # timeout condition
@@ -62,7 +62,7 @@ class Service:
             socket.setdefaulttimeout(timeout)
             page = urllib.request.urlopen(link)
             result = page.read()
-            check = re.search(self.result_pattern, result)
+            check = re.search(self.result_pattern, result.decode('utf-8'))
             if self.pattern_type == 'negative':
                 if check is None:
                     return 'Yes'  # result doesn't match pattern for NoResult
@@ -81,7 +81,7 @@ class Service:
 
     def get_link(self, gene):
         link = self.link[:]
-        link = re.sub("GENE", gene, link)
+        link = re.sub(r"GENE", gene, link)
         return link
 
 

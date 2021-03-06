@@ -18,7 +18,7 @@ grey_low = form.getvalue("grey_low")
 grey_stddev = form.getvalue("grey_stddev")
 
 # Validate CGI inputs:
-if dataSource and re.search(r"^[\D\s_]{0,32}$", dataSource) is None:
+if dataSource and re.search(r"^[\d\D\s\-_]{0,32}$", dataSource) is None:
     efpBase.clean_exit("Data Source is invalid")
 
 if primaryGene and re.search(efpConfig.inputRegEx, primaryGene) is None:
@@ -61,7 +61,7 @@ CONF['webservice_gene2'] = None
 (default_img_filename, error, error_strings, test_alert_strings, alert_strings, webservice_gene1, webservice_gene2,
  views, img_filename, img_map, table_file, gene1, gene2, dataSource, primaryGene, secondaryGene, threshold, ncbi_gi,
  mode, useThreshold, grey_low, grey_stddev) = \
-    efpBase.processRequest(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, mode, useThreshold, grey_low, grey_stddev, CONF)
+    efpBase.process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, mode, useThreshold, grey_low, grey_stddev, CONF)
 
 # HTML header
 print('Content-Type: text/html\n')
@@ -218,7 +218,7 @@ if mode and error == 0:
                 highlight2 = service.check_service(webservice_gene2.webservice_gene)
             if highlight1 == 'error' or highlight2 == 'error':
                 print('<td><img title="connection error for service %s" width="50" height="50" alt="connection error" src="%s/error.png"></td>' % (
-                        name, efpConfig.dataDir))
+                        name, efpConfig.dataDirWeb))
                 continue
             elif highlight1:
                 link = service.get_link(webservice_gene1.webservice_gene)
@@ -228,18 +228,18 @@ if mode and error == 0:
                 gene = webservice_gene1.webservice_gene
             else:
                 print('<td><img title="No %s data found" width="50" height="50" alt="No %s data found" style="opacity:0.30;filter:alpha(opacity=30);" src="%s/%s"></td>' % (
-                        name, name, efpConfig.dataDir, service.icon))
+                        name, name, efpConfig.dataDirWeb, service.icon))
                 continue
             if link:
                 if external == "true":
                     print('<td><a target="_blank" title="%s gene %s" href="%s"><img width="50" height="50" alt="%s gene %s" src="%s/%s"></a></td>' % (
-                            name, gene, link, name, gene, efpConfig.dataDir, service.icon))
+                            name, gene, link, name, gene, efpConfig.dataDirWeb, service.icon))
                 else:
                     print('<td><a target="_blank" title="%s for gene %s" href="%s"><img width="50" height="50" alt="%s for gene %s" src="%s/%s"></a></td>' % (
-                            name, gene, link, name, gene, efpConfig.dataDir, service.icon))
+                            name, gene, link, name, gene, efpConfig.dataDirWeb, service.icon))
             else:
                 print('<td><img target="_blank" title="%s found for gene %s" width="50" height="50" alt="%s found for %s" src="%s/%s"></td>' % (
-                        name, gene, name, gene, efpConfig.dataDir, service.icon))
+                        name, gene, name, gene, efpConfig.dataDirWeb, service.icon))
         print('</tr></table>')
 
     # print the image
