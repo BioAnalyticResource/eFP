@@ -19,6 +19,7 @@ import matplotlib
 
 matplotlib.use('Agg')  # set image engine, needed for png creation
 import pylab
+import numpy as np
 
 
 def get_gene_list(file_name, n):
@@ -315,64 +316,87 @@ class View:
             self.table += '<td><B>Expression Level</B></td><td><B>Standard Deviation</B></td>'
         self.table += '<td><B>Samples</B></td><td><B>Links</B></td></tr>\n'
 
-    def append_table(self, tissue, value, n, ratio, stddev, sample_sig, control_sig, color):
+    def append_table(self, mode, tissue, value, n, ratio, stddev, sample_sig, control_sig, color):
         """
         Produces a row in the Table for each tissue
+        @param mode:
         @param tissue:
         @param value:
         @param n:
-        @param ratio:
+        @param ratio: boolean
         @param stddev:
         @param sample_sig:
         @param control_sig:
         @param color:
         @return:
         """
-        signal_dict = {}
+        signal_dict = {'group': n}
 
-        if value is None:
-            val_floor = None
-        else:
-            val_floor = math.floor(value * 100) / 100
-
+        # Add Group number and tissue name to the table
         self.table += '<tr class=r%s><td>%s</td><td>%s</td>' % ((n % 2), n, tissue.name)
 
-        signal_dict['group'] = n
-
-        if (sample_sig is not None) and (control_sig is not None):
-            sample_sig_floor = math.floor(sample_sig * 100) / 100
-            control_sig_floor = math.floor(control_sig * 100) / 100
-            self.table += '<td align=right>%s</td><td align=right>%s</td><td align=right>%s</td>' % (
-                sample_sig_floor, control_sig_floor, val_floor)
-            signal_dict['sample_sig'] = sample_sig_floor - control_sig_floor
+        if value is None:
+            val_floor = np.nan
         else:
-            self.table += '<td align=right>%s</td>' % val_floor
+            val_floor = math.floor(value * 100) / 100.0
+
+        if control_sig is None:
+            control_sig_floor = np.nan
+        else:
+            control_sig_floor = math.floor(control_sig * 100) / 100.0
+
+        if sample_sig is None:
             signal_dict['sample_sig'] = val_floor
+            sample_sig_floor = np.nan
+        else:
+            sample_sig_floor = math.floor(sample_sig * 100) / 100.0
+            signal_dict['sample_sig'] = sample_sig_floor - control_sig_floor
 
         # Fold Change for Relative and Compare Modes
         if ratio:
-            if value is not None:
-                fold = math.floor(math.pow(2, value) * 100) / 100
-                self.table += '<td align=right>%s</td>' % fold
-                signal_dict['ratio'] = fold
+            if value is None:
+                fold = np.nan
             else:
-                fold = None
-                self.table += '<td align=right>%s</td>' % fold
-                signal_dict['ratio'] = fold
+                fold = math.floor(math.pow(2, value) * 100) / 100.0
+
+            signal_dict['ratio'] = fold
+
         else:
-            self.table += '<td align=right>%s</td>' % (stddev)
+            if stddev is None:
+                stddev = np.nan
             signal_dict['stddev'] = stddev
+
+        # Append to table
+        if mode == "Absolute":
+            self.table += '<td align=right>%s</td>' % val_floor
+            self.table += '<td align=right>%s</td>' % stddev
+        elif mode == "Relative":
+            self.table += '<td align=right>%s</td><td align=right>%s</td><td align=right>%s</td>' % (
+                sample_sig_floor, control_sig_floor, val_floor)
+            self.table += '<td align=right>%s</td>' % fold
+        else:
+            # Compare mode
+            # The val_floor here is actually Log2Ratio
+            self.table += '<td align=right>%s</td>' % val_floor
+            self.table += '<td align=right>%s</td>' % fold
 
         self.table += '<td>'
 
+        # Add sample name to the table
+        first = True
         for sample in tissue.samples:
-            self.table += '%s,' % sample.name
+            if first:
+                self.table += '%s' % sample.name
+                first = False
+            self.table += ', %s' % sample.name
 
-        signal_dict['samplename'] = tissue.name
-        signal_dict['signalcolor'] = color
+        # Add signal and link to table
+        self.table += '</td><td><A target="_blank" href=%s>To the Experiment</A></td></tr>\n' % tissue.url
+
+        signal_dict['signal_sample_name'] = tissue.name
+        signal_dict['sample_signal_color'] = color
 
         self.signals.append(signal_dict)
-        self.table += '</td><td><A target="_blank" href=%s>To the Experiment</A></td></tr>\n' % tissue.url
 
     def end_table(self):
         self.table += '</table>\n'
@@ -385,7 +409,7 @@ class View:
         @return:
         """
         data_count = len(self.signals)
-        x = pylab.arange(data_count)
+        x = np.arange(data_count)
         y = []
         colors = []
         ratio = []
@@ -405,10 +429,13 @@ class View:
             # insert ' ' upfront to get background color down to bottom
             # insert 'Iy' upfront to ensure equal height of text line for all samples
             # so with background color there are now white lines in between
-            samples.append('Iy' + ' ' * 500 + signal['samplename'])
-            if len(signal['samplename']) > max_sample:
-                max_sample = len(signal['samplename'])
+            samples.append('Iy' + ' ' * 500 + signal['signal_sample_name'])
+
+            if len(signal['signal_sample_name']) > max_sample:
+                max_sample = len(signal['signal_sample_name'])
+
             colors.append(color_arr[signal['group'] % 2])
+
             if 'stddev' in signal:
                 stddev.append(signal['stddev'])
             if 'ratio' in signal:
@@ -417,7 +444,7 @@ class View:
                 groups[signal['group']] = groups[signal['group']] + 1
             else:
                 groups[signal['group']] = 1
-            bg_colors.append(signal['signalcolor'])
+            bg_colors.append(signal['sample_signal_color'])
 
         # initialize image with size depending on amount of values and length of sample names
         plot = pylab.figure(frameon=False, dpi=180)  # initialize image
@@ -443,20 +470,14 @@ class View:
             ax1.bar(x + bar_width / 2., y, bar_width, color=box_color, linewidth=0, yerr=stddev)
             ax1.yaxis.grid(True, linewidth=0.5, color=grid_color)
             ax1.set_ylabel("%s" % (self.conf['Y_AXIS'][self.database]), size='x-small')
-        elif mode == "Relative":
-            y1_max = 1.1 * max(y)
-            y1_min = 1.1 * min(y)
-            y2_max = 1.1 * max(ratio) - 0.1
-            y2_min = 1.1 * min(ratio) - 0.1
 
+        elif mode == "Relative":
             ax1.bar(x + bar_width / 2., y, bar_width, color=box_color, linewidth=0)
             ax1.yaxis.grid(True, linewidth=0.5, color=grid_color)
             ax1.set_ylabel("difference in %s" % (self.conf['Y_AXIS'][self.database]), size='x-small')
-            ax1.set_ylim(bottom=y1_min, top=y1_max)
             ax2 = pylab.twinx()
             ax2.plot(x + bar_width / 2., ratio, color='b', linestyle='None', marker='.', label=None)  # , visible=False
             ax2.set_ylabel('fold change', size='x-small')
-            ax2.set_ylim(bottom=y2_min, top=y2_max)
 
             # workaround for printing labels on x-axis twice (fixed in more current version of matplotlib
             for tl in ax2.get_xticklabels():
@@ -489,6 +510,7 @@ class View:
         signal = math.log(signal / control) / math.log(2)
         """
         out = '<map name="imgmap_%s">' % self.name
+        log2 = math.log(2)
 
         # Note zero_gene feature of eFP Human is not implemented yet
         for extra in self.extras:
@@ -520,7 +542,7 @@ class View:
                         extra.button = 1
                     if gene2.get_gene_id() in gene_list:
                         extra.button = 2
-                    if gene1.get_gene_id() in gene_list and gene2.get_gene_id() in gene_list:
+                    if (gene1.get_gene_id() in gene_list) and (gene2.get_gene_id() in gene_list):
                         extra.button = 3
 
                     # draw button img map
@@ -538,41 +560,60 @@ class View:
                         extra.coords, extra.name, extra.link)
 
         for group in self.groups:
-            control = group.get_control_signal(gene1)
-            if mode == "Compare":
+            # Get control for the group here:
+            if mode == "Relative":
+                control = group.get_control_signal(gene1)
+            elif mode == "Compare":
+                control = group.get_control_signal(gene1)
                 control2 = group.get_control_signal(gene2)
+            else:
+                # For Absolute and bugged eFP
+                control = None
+                control2 = None
+
             for tissue in group.tissues:
                 (signal, stddev) = tissue.get_mean_signal(gene1)
-                if mode == "Absolute":
-                    if signal is None:
-                        sig_string = "No data available"
-                    else:
-                        sig_floor = math.floor(signal * 100)
-                        sig_string = "Level: %s, SD: %s" % (sig_floor / 100, stddev)
+
+                if signal is None:
+                    # Note: fold is not needed here
+                    sig_string = "No data available"
+
                 else:
-                    if (signal != 0) and (signal is not None):
-                        signal = math.log(signal / control) / math.log(2)
+                    # Signal is not None for here onwards
+                    if mode == "Absolute":
+                        sig_floor = math.floor(signal * 100) / 100.0
+                        sig_string = "Level: %s, SD: %s" % (sig_floor, stddev)
 
-                    if mode == "Compare":
-                        (value2, stddev2) = tissue.get_mean_signal(gene2)
-                        signal2 = 0
-                        if (value2 != 0) and (signal != 0) and (signal is not None) and (value2 is not None):
-                            signal2 = math.log(value2 / control2) / math.log(2)
-                            signal = signal - signal2
-                        # Logic from Human eFP
-                        if (signal is not None) and (signal2 is not None) and (value2 is not None):
-                            sig_floor = math.floor(signal * 100) / 100
-                            fold = math.floor(math.pow(2, signal) * 100) / 100
-                            sig_string = "Log2 Value: %s, Fold-Change: %s" % (sig_floor, fold)
-                        else:
+                    elif mode == "Relative":
+                        # We already have controls
+                        if (control is None) or (signal == 0) or (control == 0):
                             sig_string = "No data available"
+                        else:
+                            # The actual math and science of Relative mode
+                            signal = math.log(signal / control) / log2
+                            sig_floor = math.floor(signal * 100) / 100.0
+                            fold = math.floor(math.pow(2, signal) * 100) / 100.0
+                            sig_string = "Log2 Value: %s, Fold-Change: %s" % (sig_floor, fold)
 
-                    if (mode != "Compare") and (signal is not None):
-                        sig_floor = math.floor(signal * 100) / 100
-                        fold = math.floor(math.pow(2, signal) * 100) / 100
-                        sig_string = "Log2 Value: %s, Fold-Change: %s" % (sig_floor, fold)
-                    elif (mode != "Compare") and (signal is None):
-                        sig_string = "No data available"
+                    elif mode == "Compare":
+                        # Get Signals, We already have controls
+                        (value2, stddev2) = tissue.get_mean_signal(gene2)
+
+                        if (value2 is None) or (control is None) or (control2 is None) or \
+                                (signal == 0) or (value2 == 0) or (control == 0) or (control2 == 0):
+                            sig_string = "No data available"
+                        else:
+                            # No nones or zerrors
+                            signal = math.log(signal / control) / log2
+                            signal2 = math.log(value2 / control2) / log2
+                            signal = signal - signal2
+                            sig_floor = math.floor(signal * 100) / 100.0
+                            fold = math.floor(math.pow(2, signal) * 100) / 100.0
+                            sig_string = "Log2 Value: %s, Fold-Change: %s" % (sig_floor, fold)
+
+                    else:
+                        # So Mode is none of the 3. How did we get here?
+                        sig_string = "An error has occurred. Please report to the BAR."
 
                 for coords in tissue.coords:
                     out += '<area shape="polygon" coords="%s" title="%s \n%s" href="%s">\n' % (
@@ -682,94 +723,6 @@ class View:
         draw.rectangle((left, bottom + ((y + 1) * height), left + 12, bottom + (y + 2) * height), fill=(204, 204, 204))
         draw.text((left + 12, bottom + ((y + 1) * height)), " Masked", font=font, fill=(0, 0, 0))
 
-    def render_comparison(self, gene1, gene2, threshold=0.0):
-        """
-        Renders each tissue according to the ratio of the signal strength
-        of the first gene to its control relative to ratio of the signal
-        strength of the second gene to its control
-        :param gene1: Gene we're evaluating
-        :param gene2: Base Gene, used as control
-        :param threshold:
-        :return: A PIL Image object containing the final rendered data
-        """
-        out_image = self.colorMap.copy()
-        max_signal, max_signal1, max_signal2 = self.get_view_max_signal(gene1, False, gene2=gene2)
-        max_greater = False
-
-        if threshold >= self.conf['minThreshold_Compare']:
-            efp_max = threshold
-            if max_signal > threshold:
-                max_greater = True
-        elif max_signal == 0:
-            efp_max = self.conf['minThreshold_Compare']
-        else:
-            # If the user doesn't give us a reasonable value for threshold,
-            # use the maximum signal from dbGroup for this gene
-            efp_max = max_signal
-
-        intensity = 0  # Cast as int
-        log2 = math.log(2)
-
-        n = 1
-        self.start_table(True, False)
-        for group in self.groups:
-            control1 = group.get_control_signal(gene1)
-            control2 = group.get_control_signal(gene2)
-            for tissue in group.tissues:
-                # If for some reason this tissue object doesn't have a color key
-                # assigned (malformed XML data?), skip it
-                if tissue.colorKey == (0, 0, 0):
-                    continue
-
-                ratio1_log = 0
-                ratio2_log = 0
-
-                (sig1, stddev1) = tissue.get_mean_signal(gene1)
-                if (sig1 is not None) and (sig1 != 0):
-                    ratio1_log = math.log(sig1 / control1) / log2
-                elif sig1 is None:
-                    ratio1_log = None
-                else:
-                    ratio1_log = 0
-
-                (sig2, stddev2) = tissue.get_mean_signal(gene2)
-                if (sig2 is not None) and (sig2 != 0):
-                    ratio2_log = math.log(sig2 / control2) / log2
-                elif sig2 is None:
-                    ratio2_log = None
-                else:
-                    ratio2_log = 0
-
-                if (ratio1_log is not None) and (ratio2_log is not None):
-                    intensity = int((ratio1_log - ratio2_log) * 255.0 / efp_max)
-                    intensity = clamp(intensity, -255, 255)
-                else:
-                    intensity = None
-
-                if intensity is None:
-                    color = (221, 221, 221)
-                elif intensity > 0:
-                    # Map values above equal point to [yellow, red]
-                    color = (255, 255 - intensity, 0)
-                else:
-                    # Map values below equal point to [blue, yellow]
-                    color = (255 + intensity, 255 + intensity, - intensity)
-
-                # Add to developing Table of Expression Values
-                if ratio1_log is None or ratio2_log is None:
-                    self.append_table(tissue, None, n, True, None, None, None, tissue.colorKey)
-                else:
-                    self.append_table(tissue, ratio1_log - ratio2_log, n, True, None, None, None, tissue.colorKey)
-                out_image.replaceFill(self.colorMap, tissue.colorKey, color)
-            n += 1
-
-        # Complete Table of Expression Values
-        self.end_table()
-
-        self.render_legend(out_image, "Log2 Ratio", efp_max, -efp_max, less_than=max_greater, greater_than=max_greater,
-                           is_relative=True)
-        return out_image, max_signal, max_signal1, max_signal2
-
     def render_absolute(self, gene, threshold=0.0, grey_mask=False):
         """
         Renders tissue data on a scale of the maximum signal.
@@ -805,34 +758,33 @@ class View:
                 (signal, stddev) = tissue.get_mean_signal(gene)
                 if signal is None:
                     color = (221, 221, 221)
-                elif signal != 0:
-                    if efp_max != 0:
-                        intensity = int(math.floor(signal * 255.0 / efp_max))
-                else:
-                    intensity = 0
-                    signal = 0
-
-                # Grey out expression levels with high standard deviations
-                if signal is None:
-                    color = (221, 221, 221)
-                elif signal != 0 and stddev / signal > 0.5 and grey_mask == 'on':
-                    color = (221, 221, 221)  # CCCCCC
-                else:
-                    # Otherwise, color appropriately
-                    color = (255, 255 - intensity, 0)
-
-                # Add to developing Table of Expression Values
-                if signal is None:
-                    table_signal = 0
-                    table_stddev = 0
-                    self.append_table(tissue, table_signal, n, False, table_stddev, None, None, tissue.colorKey)
-                else:
-                    self.append_table(tissue, signal, n, False, stddev, None, None, tissue.colorKey)
-                # pass an alert back to the user otherwise
-                if signal is None:
                     sd_alert = 1
-                elif signal != 0 and stddev / signal > 0.5 and grey_mask != 'on':
-                    sd_alert = 1
+                    stddev = None
+                else:
+                    if signal == 0:
+                        color = (255, 255, 0)  # Yellow
+                        stddev = 0  # If signal is zero, set stddev to zero as well
+
+                    else:
+                        # In case if Max value is zero
+                        if efp_max == 0:
+                            intensity = 0
+                        else:
+                            intensity = int(math.floor(signal * 255.0 / efp_max))
+
+                        # Grey out expression levels with high standard deviations
+                        if (stddev / signal) > 0.5:
+                            if grey_mask == 'on':
+                                color = (221, 221, 221)  # Masked: CCCCCC
+                            else:
+                                sd_alert = 1
+                                color = (255, 255 - intensity, 0)
+                        else:
+                            # Otherwise, color appropriately
+                            color = (255, 255 - intensity, 0)
+
+                # Append to table
+                self.append_table("Absolute", tissue, signal, n, False, stddev, None, None, tissue.colorKey)
 
                 # Perform fast color replacement
                 out_image.replaceFill(self.colorMap, tissue.colorKey, color)
@@ -876,7 +828,9 @@ class View:
         low_alert = 0
         self.start_table(True, True)
         for group in self.groups:
+            # Get control for this group
             control = group.get_control_signal(gene)
+
             for tissue in group.tissues:
                 # If for some reason this tissue object doesn't have a color key
                 # assigned (malformed XML data?), skip it
@@ -885,48 +839,32 @@ class View:
 
                 (signal, stddev) = tissue.get_mean_signal(gene)
 
-                # Some sample signals in the Root DB are equal to 0 (no signal), and cause errors during calculations.
-                if signal == 0 or control == 0:
-                    ratio_log2 = 0
-                elif signal is not None:
-                    ratio_log2 = math.log(signal / control) / log2
-                else:
+                if (signal is None) or (control is None) or (signal == 0) or (control == 0) or (max_log2 == 0):
                     ratio_log2 = None
-
-                if max_log2 == 0:
-                    intensity = 0
-                elif (signal is None) or (ratio_log2 is None):
-                    color = (221, 221, 221)
-                elif signal is not None:
+                    color = (221, 221, 221)  # Masked
+                    low_alert = 1
+                    self.append_table("Relative", tissue, ratio_log2, n, True, None, signal, control, tissue.colorKey)
+                else:
+                    ratio_log2 = math.log(signal / control) / log2
                     intensity = int(math.floor(255 * (ratio_log2 / max_log2)))
                     intensity = clamp(intensity, -255, 255)
 
-                # Grey out low expression levels
-                if signal is None:
-                    color = (221, 221, 221)
-                elif signal <= 20 and grey_mask == 'on':
-                    color = (221, 221, 221)  # CCCCCC
-                # Otherwise, color appropriately
-                elif (intensity > 0) and (signal is not None):
-                    color = (255, 255 - intensity, 0)
-                else:
-                    color = (255 + intensity, 255 + intensity, - intensity)
+                    if signal <= 20 and grey_mask == "on":
+                        low_alert = 1
+                        color = (221, 221, 221)  # Masked: #CCCCCC
+                    elif intensity > 0:
+                        # Otherwise, color appropriately
+                        color = (255, 255 - intensity, 0)
+                    else:
+                        color = (255 + intensity, 255 + intensity, - intensity)
 
-                # Add to developing Table of Expression Values
-                if signal is None:
-                    ratio_log2 = 0
-                    signal = 0
-                    control = 0
-                    self.append_table(tissue, ratio_log2, n, True, None, signal, control, tissue.colorKey)
-                else:
-                    self.append_table(tissue, ratio_log2, n, True, None, signal, control, tissue.colorKey)
+                    # Set up Grey Mask alert
+                    if signal <= 20 and grey_mask != "on":
+                        low_alert = 1
 
-                # Alert the user if low filter turned off
-                if signal is None:
-                    low_alert = 1
-                elif signal <= 20 and grey_mask != 'on':
-                    low_alert = 1
+                    self.append_table("Relative", tissue, ratio_log2, n, True, None, signal, control, tissue.colorKey)
 
+                # Finally run replaceFill
                 out_image.replaceFill(self.colorMap, tissue.colorKey, color)
 
             n += 1
@@ -936,6 +874,84 @@ class View:
         self.render_legend(out_image, "Log2 Ratio", max_log2, -max_log2, less_than=max_greater,
                            greater_than=max_greater, is_relative=True)
         return out_image, max_signal, max_signal1, max_signal2, low_alert
+
+    def render_comparison(self, gene1, gene2, threshold=0.0):
+        """
+        Renders each tissue according to the ratio of the signal strength
+        of the first gene to its control relative to ratio of the signal
+        strength of the second gene to its control
+        :param gene1: Gene we're evaluating
+        :param gene2: Base Gene, used as control
+        :param threshold:
+        :return: A PIL Image object containing the final rendered data
+        """
+        out_image = self.colorMap.copy()
+        max_signal, max_signal1, max_signal2 = self.get_view_max_signal(gene1, False, gene2=gene2)
+        max_greater = False
+
+        if threshold >= self.conf['minThreshold_Compare']:
+            efp_max = threshold
+            if max_signal > threshold:
+                max_greater = True
+        elif max_signal == 0:
+            efp_max = self.conf['minThreshold_Compare']
+        else:
+            # If the user doesn't give us a reasonable value for threshold,
+            # use the maximum signal from dbGroup for this gene
+            efp_max = max_signal
+
+        intensity = 0  # Cast as int
+        log2 = math.log(2)
+
+        n = 1
+        self.start_table(True, False)
+        for group in self.groups:
+            # Get control data
+            control1 = group.get_control_signal(gene1)
+            control2 = group.get_control_signal(gene2)
+
+            for tissue in group.tissues:
+                # If for some reason this tissue object doesn't have a color key
+                # assigned (malformed XML data?), skip it
+                if tissue.colorKey == (0, 0, 0):
+                    continue
+
+                # Get the signal
+                (sig1, stddev1) = tissue.get_mean_signal(gene1)
+                (sig2, stddev2) = tissue.get_mean_signal(gene2)
+
+                if (sig1 is None) or (sig2 is None) or (control1 is None) or (control2 is None) or \
+                        (sig1 == 0) or (sig2 == 0) or (control1 == 0) or (control2 == 0):
+                    color = (221, 221, 221)
+                    self.append_table("Compare", tissue, None, n, True, None, None, None, tissue.colorKey)
+
+                else:
+                    ratio1_log = math.log(sig1 / control1) / log2
+                    ratio2_log = math.log(sig2 / control2) / log2
+
+                    intensity = int((ratio1_log - ratio2_log) * 255.0 / efp_max)
+                    intensity = clamp(intensity, -255, 255)
+
+                    if intensity is None:
+                        color = (221, 221, 221)
+                    elif intensity > 0:
+                        # Map values above equal point to [yellow, red]
+                        color = (255, 255 - intensity, 0)
+                    else:
+                        # Map values below equal point to [blue, yellow]
+                        color = (255 + intensity, 255 + intensity, - intensity)
+
+                    self.append_table("Compare", tissue, ratio1_log - ratio2_log, n, True, None, None, None, tissue.colorKey)
+
+                out_image.replaceFill(self.colorMap, tissue.colorKey, color)
+            n += 1
+
+        # Complete Table of Expression Values
+        self.end_table()
+
+        self.render_legend(out_image, "Log2 Ratio", efp_max, -efp_max, less_than=max_greater, greater_than=max_greater,
+                           is_relative=True)
+        return out_image, max_signal, max_signal1, max_signal2
 
     def draw_line(self, img, signal, off_set_val, displace_val, top, bottom, color):
         draw = PIL.ImageDraw.Draw(img)
@@ -982,7 +998,7 @@ class View:
         # draw a red box around button links to heatmaps if the searched gene is contained in the heatmap
         for extra in self.extras:
             # extra.button is true when a red box should be drawn, ie. when the searched gene is in the heatmap list
-            if not extra.button == False:
+            if extra.button:
                 # split the coords into a list and cast to integers
                 str_coords = extra.coords.split(',')
                 coords = []
