@@ -125,7 +125,8 @@ def process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, 
             elif primaryGene == secondaryGene and mode == 'Compare':
                 error = 1
                 error_str = 'The requested Secondary gene / probeset ID "%s" must be different than the Primary ID<br>' \
-                            % secondaryGene, error_strings.append(error_str)
+                            % secondaryGene
+                error_strings.append(error_str)
                 view_max_signal = 2.0
             else:
                 if mode == 'Absolute':

@@ -52,9 +52,17 @@ class Gene:
 
         cursor = self.conn.cursor()
 
-        select_cmd = 'SELECT t1.`%s`, t1.probeset FROM `%s` t1 WHERE (t1.probeset=%%s or t1.`%s`=%%s) AND t1.date=(SELECT MAX(t2.date) FROM `%s` t2)' % \
-                     (self.conf['DB_LOOKUP_GENEID_COL'], self.conf['DB_LOOKUP_TABLE'],
-                      self.conf['DB_LOOKUP_GENEID_COL'], self.conf['DB_LOOKUP_TABLE'])
+        if self.conf['species'] == 'EUTREMA':
+            select_cmd = 'SELECT t1.%s, t1.%s FROM %s t1 WHERE (t1.%s=%%s or t1.%s=%%s) AND t1.date=(SELECT MAX(t2.date) FROM %s t2)' % \
+                         (self.conf['DB_LOOKUP_ARABIDOPSIS_COL'], self.conf['DB_LOOKUP_GENEID_COL'],
+                          self.conf['DB_LOOKUP_TABLE'],
+                          self.conf['DB_LOOKUP_ARABIDOPSIS_COL'], self.conf['DB_LOOKUP_GENEID_COL'],
+                          self.conf['DB_LOOKUP_TABLE'])
+        else:
+            select_cmd = 'SELECT t1.`%s`, t1.probeset FROM `%s` t1 WHERE (t1.probeset=%%s or t1.`%s`=%%s) AND t1.date=(SELECT MAX(t2.date) FROM `%s` t2)' % \
+                         (self.conf['DB_LOOKUP_GENEID_COL'], self.conf['DB_LOOKUP_TABLE'],
+                          self.conf['DB_LOOKUP_GENEID_COL'], self.conf['DB_LOOKUP_TABLE'])
+
         cursor.execute(select_cmd, (efp_id, efp_id))
         row = cursor.fetchall()
         cursor.close()
@@ -191,13 +199,22 @@ class Gene:
                 cursor.execute(select_cmd, (self.gene_id,))
 
             result = cursor.fetchone()
+
+            # Initialize
+            items = ['']
+            aliases = ['']
             
             if result:
                 self.annotation = result[0]
                 cursor.close()
 
-                items = '__'.split(self.annotation)
-                aliases = '_'.split(items[0])
+                try:
+                    items = '__'.split(self.annotation)
+                    aliases = '_'.split(items[0])
+                except ValueError:
+                    if self.annotation == '' or self.annotation is None:
+                        items = ['']
+                        aliases = ['']
 
                 if len(items) == 1:
                     aliases[0] = ''
