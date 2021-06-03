@@ -52,7 +52,12 @@ class Gene:
 
         cursor = self.conn.cursor()
 
-        if self.conf['species'] == 'EUTREMA':
+        # Special case for Medicago Seed
+        if (self.conf['species'] == "MEDICAGO") and (self.database == "medicago_seed"):
+            self.conf['DB_LOOKUP_TABLE'] = self.conf["DB_LOOKUP_TABLE_SEED"]
+
+        # Todo: Bug here is that for this to work, a lookup need to exist.
+        if self.conf['species'] in ("EUTREMA", "CAMELINA", "STRAWBERRY", "PHELIPANCHE", "STRIGA", "TRIPHYSARIA"):
             select_cmd = 'SELECT t1.%s, t1.%s FROM %s t1 WHERE (t1.%s=%%s or t1.%s=%%s) AND t1.date=(SELECT MAX(t2.date) FROM %s t2)' % \
                          (self.conf['DB_LOOKUP_ARABIDOPSIS_COL'], self.conf['DB_LOOKUP_GENEID_COL'],
                           self.conf['DB_LOOKUP_TABLE'],

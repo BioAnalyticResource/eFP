@@ -18,13 +18,13 @@ grey_low = form.getvalue("grey_low")
 grey_stddev = form.getvalue("grey_stddev")
 
 # Validate CGI inputs:
-if dataSource and re.search(r"^[\d\D\s\-_]{0,32}$", dataSource) is None:
+if dataSource and re.search(r"^[\d\D\s\-_]{0,48}$", dataSource) is None:
     efpBase.clean_exit("Data Source is invalid")
 
-if primaryGene and re.search(efpConfig.inputRegEx, primaryGene) is None:
+if primaryGene and re.search(efpConfig.inputRegEx, primaryGene, re.I) is None:
     efpBase.clean_exit("Primary Gene is invalid")
 
-if secondaryGene and re.search(efpConfig.inputRegEx, secondaryGene) is None:
+if secondaryGene and re.search(efpConfig.inputRegEx, secondaryGene, re.I) is None:
     efpBase.clean_exit("Secondary Gene is invalid")
 
 if ncbi_gi and re.search(r"^\d{0,16}$", ncbi_gi) is None:
@@ -45,6 +45,21 @@ if grey_low and re.search(r"^(on)|(None)$", grey_low) is None:
 if grey_stddev and re.search(r"^(on)|(None)$", grey_stddev) is None:
     efpBase.clean_exit("Grey low is invalid.")
 
+
+# Fix soybean IDs
+# Add a .1 at the end of the end of it is soybean_senescence, and remove if it doesn't
+if efpConfig.species == "SOYBEAN":
+    if dataSource == "soybean_senescence":
+        if (primaryGene is not None) and (re.search(r"\.\d$", primaryGene) is None):
+            primaryGene += ".1"
+        if (secondaryGene is not None) and (re.search(r"\.\d$", secondaryGene) is None):
+            secondaryGene = secondaryGene + ".1"
+    else:
+        if (primaryGene is not None) and re.search(r'\.\d$', primaryGene):
+            primaryGene = re.sub(r'\.\d$', '', primaryGene)
+        if (secondaryGene is not None) and re.search(r'\.\d$', secondaryGene):
+            secondaryGene = re.sub(r'\.\d$', '', secondaryGene)
+
 # Open test file here if required
 # testing_efp = open(efpConfig.OUTPUT_FILES + "/testing_efpweb.txt", "w")
 
@@ -61,7 +76,8 @@ CONF['webservice_gene2'] = None
 (default_img_filename, error, error_strings, test_alert_strings, alert_strings, webservice_gene1, webservice_gene2,
  views, img_filename, img_map, table_file, gene1, gene2, dataSource, primaryGene, secondaryGene, threshold, ncbi_gi,
  mode, useThreshold, grey_low, grey_stddev) = \
-    efpBase.process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, mode, useThreshold, grey_low, grey_stddev, CONF)
+    efpBase.process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, mode, useThreshold, grey_low,
+                            grey_stddev, CONF)
 
 # HTML header
 print('Content-Type: text/html\n')
@@ -72,7 +88,8 @@ print('<html lang="en">')
 print('<head>')
 print('  <title>%s eFP Browser</title>' % efpConfig.spec_names[efpConfig.species])
 print('  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">')
-print('  <meta name="keywords" content="%s, genomics, expression profiling, mRNA-seq, Affymetrix, microarray, protein-protein interactions, protein structure, polymorphism, subcellular localization, proteomics, poplar, rice, Medicago, barley, transcriptomics, proteomics, bioinformatics, data analysis, data visualization, AtGenExpress, PopGenExpress, cis-element prediction, coexpression analysis, Venn selection, molecular biology">' % \
+print(
+    '  <meta name="keywords" content="%s, genomics, expression profiling, mRNA-seq, Affymetrix, microarray, protein-protein interactions, protein structure, polymorphism, subcellular localization, proteomics, poplar, rice, Medicago, barley, transcriptomics, proteomics, bioinformatics, data analysis, data visualization, AtGenExpress, PopGenExpress, cis-element prediction, coexpression analysis, Venn selection, molecular biology">' % \
     efpConfig.spec_names[efpConfig.species])
 print('  <link rel="stylesheet" type="text/css" href="%s/efp.css"/>' % efpConfig.STATIC_FILES_WEB)
 print('  <link rel="stylesheet" type="text/css" href="%s/domcollapse.css"/>' % efpConfig.STATIC_FILES_WEB)
@@ -89,26 +106,33 @@ print('<tr><td>')
 print('  <span style="float:right; top:0px; left:538px; width:250px; height:75px;">')
 print('    <script src="%s/popup.js"></script>' % efpConfig.STATIC_FILES_WEB)
 print('  </span>')
-print("<h1 style='vertical-align:middle;'><a href='//bar.utoronto.ca'><img src='//bar.utoronto.ca/bbc_logo_small.gif' alt='To the Bio-Array Resource Homepage' border=0 align=absmiddle></a>&nbsp;<img src='//bar.utoronto.ca/bar_logo.gif' alt='The Bio-Array Resource' border=0 align=absmiddle>&nbsp;<img src='//bar.utoronto.ca/images/eFP_logo_large.png' align=absmiddle border=0>&nbsp;%s eFP Browser<br><img src='//bar.utoronto.ca/images/green_line.gif' width=98%% alt='' height='6px' border=0></h1>" % \
+print(
+    "<h1 style='vertical-align:middle;'><a href='//bar.utoronto.ca'><img src='//bar.utoronto.ca/bbc_logo_small.gif' alt='To the Bio-Array Resource Homepage' border=0 align=absmiddle></a>&nbsp;<img src='//bar.utoronto.ca/bar_logo.gif' alt='The Bio-Array Resource' border=0 align=absmiddle>&nbsp;<img src='//bar.utoronto.ca/images/eFP_logo_large.png' align=absmiddle border=0>&nbsp;%s eFP Browser<br><img src='//bar.utoronto.ca/images/green_line.gif' width=98%% alt='' height='6px' border=0></h1>" % \
     efpConfig.spec_names[efpConfig.species])
 print('</td></tr>')
 print('<tr><td align="middle">')
 print('    <table>')
 print('      <tr align = "center"><th>Data Source</th>')
 print('      <th>Mode')
-print('<input type="checkbox" name="grey_stddev" title="In Absolute Mode, check to mask samples that exhibit a standard deviation of more than 50 percent of the signal value" ')
+print(
+    '<input type="checkbox" name="grey_stddev" title="In Absolute Mode, check to mask samples that exhibit a standard deviation of more than 50 percent of the signal value" ')
 if grey_stddev == "on":
     print('checked')
 print(' value="on" />')
 
-print('<input type="checkbox" name="grey_low" title="In Relative Mode, check to mask the use of low expression values in ratio calculations" ')
+print(
+    '<input type="checkbox" name="grey_low" title="In Relative Mode, check to mask the use of low expression values in ratio calculations" ')
 if grey_low == "on":
     print('checked')
 print(' value="on" />')
 
-print('</th><th>Primary Gene ID</th><th>Secondary Gene ID</th>')
+if efpConfig.species == "CAMELINA":
+    print('</th><th>Primary Gene ID<br>(C. sativa or Ath IDs)</th><th>Secondary Gene ID<br>(C. sativa or Ath IDs)</th>')
+else:
+    print('</th><th>Primary Gene ID</th><th>Secondary Gene ID</th>')
 
-print('      <th id="t1">Signal Threshold<input type="checkbox" name="useThreshold" title="Check to enable threshold" onclick="checkboxClicked(\'useThreshold\');" ')
+print(
+    '      <th id="t1">Signal Threshold<input type="checkbox" name="useThreshold" title="Check to enable threshold" onclick="checkboxClicked(\'useThreshold\');" ')
 if useThreshold == "on":
     print('checked')
 print(' value="on" />')
@@ -116,17 +140,21 @@ print('</th><th></th></tr>')
 print('      <tr><td>')
 
 # Help Link
-print('      <img src="//bar.utoronto.ca/affydb/help.gif" border=0 align="top" alt="Click here for instructions in a new window" onClick="HelpWin = window.open(\'//bar.utoronto.ca/affydb/BAR_instructions.html#efp\', \'HelpWindow\', \'width=600,height=300,scrollbars,resizable=yes\'); HelpWin.focus();">&nbsp;')
+print(
+    '      <img src="//bar.utoronto.ca/affydb/help.gif" border=0 align="top" alt="Click here for instructions in a new window" onClick="HelpWin = window.open(\'//bar.utoronto.ca/affydb/BAR_instructions.html#efp\', \'HelpWindow\', \'width=600,height=300,scrollbars,resizable=yes\'); HelpWin.focus();">&nbsp;')
 
 # Build drop down list of Data Sources
 if mode is None:
-    print('<select name="dataSource" onchange="location.href=\'efpWeb.cgi?dataSource=\' + this.options[this.selectedIndex].value ;">')
+    print(
+        '<select name="dataSource" onchange="location.href=\'efpWeb.cgi?dataSource=\' + this.options[this.selectedIndex].value ;">')
 elif useThreshold is None:
     thresholdSwitch = ""
-    print('      <select name="dataSource" onchange="location.href=\'efpWeb.cgi?dataSource=\' + this.options[this.selectedIndex].value + \'&mode=%s&primaryGene=%s&secondaryGene=%s&useThreshold=%s&threshold=%s&grey_low=%s&grey_stddev=%s\' ;">' % (
+    print(
+        '      <select name="dataSource" onchange="location.href=\'efpWeb.cgi?dataSource=\' + this.options[this.selectedIndex].value + \'&mode=%s&primaryGene=%s&secondaryGene=%s&useThreshold=%s&threshold=%s&grey_low=%s&grey_stddev=%s\' ;">' % (
             mode, primaryGene, secondaryGene, thresholdSwitch, threshold, grey_low, grey_stddev))
 else:
-    print('      <select name="dataSource" onchange="location.href=\'efpWeb.cgi?dataSource=\' + this.options[this.selectedIndex].value + \'&mode=%s&primaryGene=%s&secondaryGene=%s&useThreshold=%s&threshold=%s&grey_low=%s&grey_stddev=%s\' ;">' % (
+    print(
+        '      <select name="dataSource" onchange="location.href=\'efpWeb.cgi?dataSource=\' + this.options[this.selectedIndex].value + \'&mode=%s&primaryGene=%s&secondaryGene=%s&useThreshold=%s&threshold=%s&grey_low=%s&grey_stddev=%s\' ;">' % (
             mode, primaryGene, secondaryGene, useThreshold, threshold, grey_low, grey_stddev))
 
 xml = efpBase.find_xml(efpConfig.dataDir)
@@ -143,7 +171,8 @@ print('      </select></td>')
 if mode is None:
     print('      <td><select selected="Absolute" name="mode" onchange="changeMode(\'mode\');">')
 else:
-    print('		 <td><select selected="Absolute" name="mode" onchange="location.href=\'efpWeb.cgi?dataSource=%s&mode=\' + this.options[this.selectedIndex].text + \'&primaryGene=%s&secondaryGene=%s&grey_low=%s&grey_stddev=%s\' ">' % (
+    print(
+        '		 <td><select selected="Absolute" name="mode" onchange="location.href=\'efpWeb.cgi?dataSource=%s&mode=\' + this.options[this.selectedIndex].text + \'&primaryGene=%s&secondaryGene=%s&grey_low=%s&grey_stddev=%s\' ">' % (
             dataSource, primaryGene, secondaryGene, grey_low, grey_stddev))
 
 # Preserve mode between form submits. If the user selected 'Compare' as his/her
@@ -217,7 +246,8 @@ if mode and error == 0:
             if mode == 'Compare':
                 highlight2 = service.check_service(webservice_gene2.webservice_gene)
             if highlight1 == 'error' or highlight2 == 'error':
-                print('<td><img title="connection error for service %s" width="50" height="50" alt="connection error" src="%s/error.png"></td>' % (
+                print(
+                    '<td><img title="connection error for service %s" width="50" height="50" alt="connection error" src="%s/error.png"></td>' % (
                         name, efpConfig.dataDirWeb))
                 continue
             elif highlight1:
@@ -227,18 +257,22 @@ if mode and error == 0:
                 link = service.get_link(webservice_gene2.webservice_gene)
                 gene = webservice_gene1.webservice_gene
             else:
-                print('<td><img title="No %s data found" width="50" height="50" alt="No %s data found" style="opacity:0.30;filter:alpha(opacity=30);" src="%s/%s"></td>' % (
+                print(
+                    '<td><img title="No %s data found" width="50" height="50" alt="No %s data found" style="opacity:0.30;filter:alpha(opacity=30);" src="%s/%s"></td>' % (
                         name, name, efpConfig.dataDirWeb, service.icon))
                 continue
             if link:
                 if external == "true":
-                    print('<td><a target="_blank" title="%s gene %s" href="%s"><img width="50" height="50" alt="%s gene %s" src="%s/%s"></a></td>' % (
+                    print(
+                        '<td><a target="_blank" title="%s gene %s" href="%s"><img width="50" height="50" alt="%s gene %s" src="%s/%s"></a></td>' % (
                             name, gene, link, name, gene, efpConfig.dataDirWeb, service.icon))
                 else:
-                    print('<td><a target="_blank" title="%s for gene %s" href="%s"><img width="50" height="50" alt="%s for gene %s" src="%s/%s"></a></td>' % (
+                    print(
+                        '<td><a target="_blank" title="%s for gene %s" href="%s"><img width="50" height="50" alt="%s for gene %s" src="%s/%s"></a></td>' % (
                             name, gene, link, name, gene, efpConfig.dataDirWeb, service.icon))
             else:
-                print('<td><img target="_blank" title="%s found for gene %s" width="50" height="50" alt="%s found for %s" src="%s/%s"></td>' % (
+                print(
+                    '<td><img target="_blank" title="%s found for gene %s" width="50" height="50" alt="%s found for %s" src="%s/%s"></td>' % (
                         name, gene, name, gene, efpConfig.dataDirWeb, service.icon))
         print('</tr></table>')
 
@@ -263,10 +297,12 @@ if mode and error == 0:
         print('<tr align="center"><td><br>')
         temp_tablePath = table_file[view_name][1].split("/")
         table_file_name = CONF["OUTPUT_FILES_WEB"] + '/%s' % (temp_tablePath[-1])
-        print('<input type="button" name="expressiontable" value="Click Here for Table of Expression Values" onclick="resizeIframe(\'ifr%d\', ifr%d);popup(\'table%d\', \'fadein\', \'center\', 0, 1)">&nbsp;&nbsp;' % (
+        print(
+            '<input type="button" name="expressiontable" value="Click Here for Table of Expression Values" onclick="resizeIframe(\'ifr%d\', ifr%d);popup(\'table%d\', \'fadein\', \'center\', 0, 1)">&nbsp;&nbsp;' % (
                 view_no, view_no, view_no))
         tableChart_name = table_file_name.replace(".html", ".png")
-        print('<input type="button" name="expressionchart" value="Click Here for Chart of Expression Values" onclick="popup(\'chart%d\', \'fadein\', \'center\', 0, 1)">' % (
+        print(
+            '<input type="button" name="expressionchart" value="Click Here for Chart of Expression Values" onclick="popup(\'chart%d\', \'fadein\', \'center\', 0, 1)">' % (
                 view_no))
         print('<script type="text/javascript">')
         popup_content = '<span style="color:#000000;"><b>For table download right click <a href="%s">here</a> and select "Save Link As ..."</b></span>' % table_file_name
@@ -316,11 +352,19 @@ if mode and error == 0:
         print('<br></td></tr>')
         view_no = view_no + 1
     print('  <tr><td><br><ul>')
-    print('  <li>%s was used as the probe set identifier for your primary gene, %s (%s)</li>' % (
-        gene1.get_probeset_id(), gene1.get_gene_id(), gene1.get_annotation()))
+    if efpConfig.species == "CAMELINA":
+        print('  <li>%s is the Arabidopsis thaliana best hit for your Camelina sativa gene, %s </li>' %
+              (gene1.get_gene_id(), gene1.get_probeset_id()))
+    else:
+        print('  <li>%s was used as the probe set identifier for your primary gene, %s (%s)</li>' %
+              (gene1.get_probeset_id(), gene1.get_gene_id(), gene1.get_annotation()))
     if mode == 'Compare':
-        print('  <li>%s was used as the probe set identifier for the secondary gene, %s (%s)</li>' % (
-            gene2.get_probeset_id(), gene2.get_gene_id(), gene2.get_annotation()))
+        if efpConfig.species == "CAMELINA":
+            print('  <li>%s is the Arabidopsis thaliana best hit for your Camelina sativa gene, %s </li>' %
+                  (gene2.get_gene_id(), gene2.get_probeset_id()))
+        else:
+            print('  <li>%s was used as the probe set identifier for the secondary gene, %s (%s)</li>' %
+                  (gene2.get_probeset_id(), gene2.get_gene_id(), gene2.get_annotation()))
     print('  </ul>')
     if dataSource in efpConfig.datasourceFooter:
         print(efpConfig.datasourceFooter[dataSource])
