@@ -14,71 +14,34 @@ from . import efpBase
 from . import efpDb
 
 # set HOME environment variable to a directory the httpd server can write to (for matplotlib)
+# Todo: this line could be deleted
 os.environ['HOME'] = '/tmp/'
 import matplotlib
 
+# Todo: this line could be deleted
 matplotlib.use('Agg')  # set image engine, needed for png creation
 import pylab
 import numpy as np
 
 
-def get_gene_list(file_name, n):
-    """
-    get_gene_list returns a list of genes contained in a tab delimited file, commented lines start with #
-    begin at the second line of the file
-
-    @param file_name the file name
-    @param n the column that contains the gene agis
-    """
-    gene_list = []
-    try:
-        gene_file = open(file_name, 'r')
-        column = n
-        lines = gene_file.readlines()
-
-        # appends each gene agi to the gene list if the line contains a gene name
-        for i in range(1, len(lines)):
-            s = lines[i].split('\t')
-            if s[column] and (not s[column][0] == '#'):
-                gene_list.append(s[column])
-
-        gene_file.close()
-    except IOError as e:
-        print("Exception while reading file %s: %d %s" % (file_name, e[0], e[1]))
-    return gene_list
-
-
-def clamp(my_input, my_min, my_max):
-    """
-    Returns my_input clamped to [my_min, my_max]
-
-    @param my_input Input value
-    @param my_min Minimum value
-    @param my_max Maximum value
-    @return:
-    """
-    if my_input > my_max:
-        return my_max
-    if my_input < my_min:
-        return my_min
-    return my_input
-
-
-class Sample:
+class Sample(object):
     def __init__(self, name, view):
         self.name = name
         self.view = view
         self.signals = {}
 
-    def get_signal(self, gene, control=0):
-        gene_id = gene.get_gene_id()
+    def get_signal(self, gene_id, probeset_id):
+        """
+        Check to see if a gene_id has a signal.
+        If not, use it's probeset it to get a signal
+        @param gene_id:
+        @param probeset_id
+        @return:
+        """
         if gene_id not in self.signals:
-            gene = self.view.alter_gene(gene)
-            self.signals[gene_id] = self.view.get_tissue_signal(gene, self, control)
-        return self.signals[gene_id]
+            self.signals[gene_id] = self.view.get_tissue_signal(probeset_id, self.name)
 
-    def get_name(self):
-        return self.name
+        return self.signals[gene_id]
 
 
 class Tissue:
@@ -92,12 +55,6 @@ class Tissue:
         self.url = ''
         self.coords = []
         self.control = None
-
-    def get_name(self):
-        return self.name
-
-    def get_color_string(self):
-        return self.color_string
 
     def add_url(self, url):
         self.url = url
@@ -127,7 +84,7 @@ class Tissue:
         num_samples = len(self.samples)
 
         while i < num_samples:
-            signal = self.samples[i].get_signal(gene)
+            signal = self.samples[i].get_signal(gene.gene_id, gene.probeset_id)
             if signal is None:
                 return None, None
             else:
@@ -137,7 +94,7 @@ class Tissue:
 
         mean /= num_samples
         stddev = math.sqrt(sum([(x - mean) ** 2 for x in values]) / num_samples)
-        stddev = math.floor(stddev * 100) / 100
+        stddev = round(stddev, 2)
         return mean, stddev
 
 
@@ -162,9 +119,9 @@ class Group:
         num_samples = len(self.ctrl_samples)
 
         while i < num_samples:
-            if self.ctrl_samples[i].get_signal(gene, 1) is None:
+            if self.ctrl_samples[i].get_signal(gene.gene_id, gene.probeset_id) is None:
                 return None
-            mean += self.ctrl_samples[i].get_signal(gene, 1)  # 1 says: get signal for sample as control sample
+            mean += self.ctrl_samples[i].get_signal(gene.gene_id, gene.probeset_id)
             i += 1
 
         mean /= num_samples
@@ -218,6 +175,48 @@ class View:
         self.conn = None
         self.conf = conf
 
+    @staticmethod
+    def _clamp(my_input, my_min, my_max):
+        """
+        Returns my_input clamped to [my_min, my_max]
+
+        @param my_input Input value
+        @param my_min Minimum value
+        @param my_max Maximum value
+        @return:
+        """
+        if my_input > my_max:
+            return my_max
+        if my_input < my_min:
+            return my_min
+        return my_input
+
+    @staticmethod
+    def _get_gene_list(file_name, n):
+        """
+        get_gene_list returns a list of genes contained in a tab delimited file, commented lines start with #
+        begin at the second line of the file
+
+        @param file_name the file name
+        @param n the column that contains the gene agis
+        """
+        gene_list = []
+        try:
+            gene_file = open(file_name, 'r')
+            column = n
+            lines = gene_file.readlines()
+
+            # appends each gene agi to the gene list if the line contains a gene name
+            for i in range(1, len(lines)):
+                s = lines[i].split('\t')
+                if s[column] and (not s[column][0] == '#'):
+                    gene_list.append(s[column])
+
+            gene_file.close()
+        except IOError as e:
+            print("Exception while reading file %s: %d %s" % (file_name, e[0], e[1]))
+        return gene_list
+
     def add_extra(self, extra):
         self.extras.append(extra)
 
@@ -236,65 +235,95 @@ class View:
     def get_image_path(self):
         return self.image
 
-    def get_view_max_signal(self, gene, ratio, gene2=None):
+    def get_view_max_signal(self, mode, gene, gene2=None):
         """
+        This is used to calculate max/min in legend and color scales.
         modified Nov 4 2009 (HN): - Some sample signals in the Root DB are equal to 0 (no signal), and cause errors
         during calculations. Added condition to check if signal is zero. If signal/control != 0,
         signal = abs(math.log(signal/control)/math.log(2)), else signal = 0
+        @param mode:
         @param gene:
-        @param ratio: boolean
         @param gene2:
         @return:
         """
-        view_max_signal = 0.0
-        view_max_signal1 = 0.0
-        view_max_signal2 = 0.0
+        view_max_signal = 0.0   # This is the view max signal
+        view_max_gene = 0.0     # This is for the little red line in graph on some eFPs
+        view_max_gene2 = 0.0    # This is for little blue line in graph on some eFPs
+        tissue_signal = 0.0
+        log2 = math.log(2)
+
         for group in self.groups:
             control = group.get_control_signal(gene)
-            if gene2 is not None:
+
+            if mode == "Compare":
                 control2 = group.get_control_signal(gene2)
+            else:
+                control2 = None
+
             for tissue in group.tissues:
+                # Common to all
                 (signal, stddev) = tissue.get_mean_signal(gene)
-                if (signal is not None) and (signal > view_max_signal1):
-                    view_max_signal1 = signal
-                if ratio:
-                    if control == 0:
-                        signal = 0
+
+                if mode == "Absolute":
+                    # No change in Absolute mode
+                    if signal is None:
+                        tissue_signal = 0
                     else:
-                        if signal is not None:
-                            if signal != 0:
-                                signal = abs(math.log(signal / control) / math.log(2))
-                if gene2 is not None:
+                        # Set gene signal
+                        if signal > view_max_gene:
+                            view_max_gene = signal
+
+                        tissue_signal = signal
+
+                elif mode == "Relative":
+                    if (signal is None) or (control is None) or (signal == 0) or (control == 0):
+                        tissue_signal = 0
+                    else:
+                        # Set gene signal
+                        if signal > view_max_gene:
+                            view_max_gene = signal
+
+                        # Get log ratio
+                        signal = math.log(signal / control) / log2
+
+                        # Now it's +ve number (we need max abs)
+                        tissue_signal = abs(signal)
+
+                elif mode == "Compare":
+
                     (signal2, stddev2) = tissue.get_mean_signal(gene2)
-                    if signal2 > view_max_signal2:
-                        view_max_signal2 = signal2
-                    if signal2 == 0:
-                        view_max_signal2 = 0
-                    if (control == 0) or (control2 == 0):
-                        signal = 0
+
+                    if (signal is None) or (signal2 is None) or (control is None) or (control2 is None) \
+                            or (signal == 0) or (signal2 == 0) or (control == 0) or (control2 == 0):
+                        tissue_signal = 0
                     else:
-                        if (signal is not None) and (signal2 is not None) \
-                                and (signal != 0) and (signal2 != 0):
-                            try:
-                                signal = math.log((signal / control) / (signal2 / control2)) / math.log(2)
-                            except (ValueError, ZeroDivisionError):
-                                signal = 0
-                if view_max_signal == 0:
-                    if (signal is not None) and (abs(signal) > view_max_signal):
-                        view_max_signal = abs(signal)
+                        # Set gene signal
+                        if signal > view_max_gene:
+                            view_max_gene = tissue_signal
+
+                        # Set gene2 signal
+                        if signal2 > view_max_gene2:
+                            view_max_gene2 = signal2
+
+                        # Get log ratio
+                        signal = math.log((signal / control) / (signal2 / control2)) / log2
+                        tissue_signal = abs(signal)
                 else:
-                    if (signal is not None) and (signal > view_max_signal):
-                        view_max_signal = signal
+                    # Not sure how we would get here
+                    pass
 
-        # assign the efp_max signal for legend
-        view_max_signal = math.floor(view_max_signal * 100) / 100.0
-        return view_max_signal, view_max_signal1, view_max_signal2
+                # Here tissue signal must be positive
+                if tissue_signal is not None:
+                    if tissue_signal > view_max_signal:
+                        view_max_signal = tissue_signal
 
-    def start_table(self, ratio, relative):
+        view_max_signal = round(view_max_signal, 2)
+        return view_max_signal, view_max_gene, view_max_gene2
+
+    def start_table(self, mode="Absolute"):
         """
         Set up for the Table of Expression Values
-        @param ratio:
-        @param relative:
+        @param mode:
         @return:
         """
         self.table += '<style type=text/css>\n'
@@ -306,14 +335,19 @@ class View:
         self.table += 'td {font-family:arial;font-size:8pt;}\n'
         self.table += '</style>\n'
         self.table += '<table cellspacing=0 border=1 cellpadding=2 align=center>\n'
+
         # Column Headings
+
         self.table += '<tr class=rt><td><B>Group #</B></td><td><B>Tissue</B></td>'
-        if relative:
+
+        if mode == "Relative":
             self.table += '<td><B>Sample signal</B></td><td><B>Control signal</B></td>'
-        if ratio:
+            self.table += '<td><B>Log2 Ratio</B></td><td><B>Fold-Change</B></td>'
+        elif mode == "Compare":
             self.table += '<td><B>Log2 Ratio</B></td><td><B>Fold-Change</B></td>'
         else:
             self.table += '<td><B>Expression Level</B></td><td><B>Standard Deviation</B></td>'
+
         self.table += '<td><B>Samples</B></td><td><B>Links</B></td></tr>\n'
 
     def append_table(self, mode, tissue, value, n, ratio, stddev, sample_sig, control_sig, color):
@@ -338,18 +372,18 @@ class View:
         if value is None:
             val_floor = np.nan
         else:
-            val_floor = math.floor(value * 100) / 100.0
+            val_floor = round(value, 2)
 
         if control_sig is None:
             control_sig_floor = np.nan
         else:
-            control_sig_floor = math.floor(control_sig * 100) / 100.0
+            control_sig_floor = round(control_sig, 2)
 
         if sample_sig is None:
             signal_dict['sample_sig'] = val_floor
             sample_sig_floor = np.nan
         else:
-            sample_sig_floor = math.floor(sample_sig * 100) / 100.0
+            sample_sig_floor = round(sample_sig, 2)
             signal_dict['sample_sig'] = sample_sig_floor - control_sig_floor
 
         # Fold Change for Relative and Compare Modes
@@ -357,7 +391,7 @@ class View:
             if value is None:
                 fold = np.nan
             else:
-                fold = math.floor(math.pow(2, value) * 100) / 100.0
+                fold = round(math.pow(2, value), 2)
 
             signal_dict['ratio'] = fold
 
@@ -388,7 +422,8 @@ class View:
             if first:
                 self.table += '%s' % sample.name
                 first = False
-            self.table += ', %s' % sample.name
+            else:
+                self.table += ', %s' % sample.name
 
         # Add signal and link to table
         self.table += '</td><td><A target="_blank" href=%s>To the Experiment</A></td></tr>\n' % tissue.url
@@ -475,6 +510,7 @@ class View:
             ax1.bar(x + bar_width / 2., y, bar_width, color=box_color, linewidth=0)
             ax1.yaxis.grid(True, linewidth=0.5, color=grid_color)
             ax1.set_ylabel("difference in %s" % (self.conf['Y_AXIS'][self.database]), size='x-small')
+
             ax2 = pylab.twinx()
             ax2.plot(x + bar_width / 2., ratio, color='b', linestyle='None', marker='.', label=None)  # , visible=False
             ax2.set_ylabel('fold change', size='x-small')
@@ -493,11 +529,13 @@ class View:
         for t_line in ax1.get_xticklines():
             t_line.set_visible(False)
         labels = ax1.set_xticklabels(samples, rotation=90, ha='right', size='xx-small')
+
         # set background color according to signal as in efp original image
         for i in range(len(labels)):
             labels[i].set_backgroundcolor(efpBase.rgb_to_html_color(bg_colors[i]))
             if efpBase.rgb_to_gray(bg_colors[i]) < 186:
                 labels[i].set_color('#FFFFFF')  # set foreground color to white if background is dark
+
         ax1.set_xlim(left=0, right=data_count)
         pylab.savefig(filename, dpi=180)
 
@@ -532,7 +570,7 @@ class View:
 
                     # is a heat map button
                 else:
-                    gene_list = get_gene_list(extra.check, extra.checkColumn)
+                    gene_list = self._get_gene_list(extra.check, extra.checkColumn)
 
                     # if the searched gene is contained in the heatmap list, activate the link
                     # if extra.button = 1, then gene1 is contained in the list
@@ -581,7 +619,7 @@ class View:
                 else:
                     # Signal is not None for here onwards
                     if mode == "Absolute":
-                        sig_floor = math.floor(signal * 100) / 100.0
+                        sig_floor = round(signal, 2)
                         sig_string = "Level: %s, SD: %s" % (sig_floor, stddev)
 
                     elif mode == "Relative":
@@ -591,8 +629,8 @@ class View:
                         else:
                             # The actual math and science of Relative mode
                             signal = math.log(signal / control) / log2
-                            sig_floor = math.floor(signal * 100) / 100.0
-                            fold = math.floor(math.pow(2, signal) * 100) / 100.0
+                            sig_floor = round(signal, 2)
+                            fold = round(math.pow(2, signal), 2)
                             sig_string = "Log2 Value: %s, Fold-Change: %s" % (sig_floor, fold)
 
                     elif mode == "Compare":
@@ -607,8 +645,8 @@ class View:
                             signal = math.log(signal / control) / log2
                             signal2 = math.log(value2 / control2) / log2
                             signal = signal - signal2
-                            sig_floor = math.floor(signal * 100) / 100.0
-                            fold = math.floor(math.pow(2, signal) * 100) / 100.0
+                            sig_floor = round(signal, 2)
+                            fold = round(math.pow(2, signal), 2)
                             sig_string = "Log2 Value: %s, Fold-Change: %s" % (sig_floor, fold)
 
                     else:
@@ -652,7 +690,9 @@ class View:
         else:
             # Change in signal per step, always descending from efp_max
             signal_delta = efp_min - efp_max
-            signal_grad = -abs(signal_delta) / (stages - 1)
+            signal_grad = abs(signal_delta) / (stages - 1)
+
+        # Start out with maximum signal
         signal = efp_max
 
         # Height of each legend item, in pixels (hardcoded for now ...)
@@ -691,13 +731,15 @@ class View:
                 signal = efp_min
 
             # Keep two decimal points accuracy
-            signal_output += str(int(math.floor(signal * 100)) / 100.0)
+            signal_output += str(round(signal, 2))
+
             if efp_max == 0:
                 intensity = 0
             else:
                 intensity = int(signal * 255.0 / efp_max)
+
                 # Clamp intensity to [-255, 255]
-                intensity = clamp(intensity, -255, 255)
+                intensity = self._clamp(intensity, -255, 255)
 
             # Draw the colored rectangle
             if signal > 0:
@@ -719,7 +761,9 @@ class View:
             # Draw the signal value
             draw.text((left + 12, bottom + (y * height)), signal_output, font=font, fill=(0, 0, 0))
 
-            signal += signal_grad
+            # Go from max to min
+            signal -= signal_grad
+
         draw.rectangle((left, bottom + ((y + 1) * height), left + 12, bottom + (y + 2) * height), fill=(204, 204, 204))
         draw.text((left + 12, bottom + ((y + 1) * height)), " Masked", font=font, fill=(0, 0, 0))
 
@@ -732,7 +776,7 @@ class View:
         :return: A PIL Image object containing the final rendered data
         """
         out_image = self.colorMap.copy()
-        max_signal, max_signal1, max_signal2 = self.get_view_max_signal(gene, False)
+        max_signal, max_signal_gene, max_signal_gene2 = self.get_view_max_signal("Absolute", gene)
         max_greater = False
 
         if threshold >= self.conf['minThreshold_Absolute']:
@@ -746,7 +790,7 @@ class View:
 
         n = 1
         sd_alert = 0
-        self.start_table(False, False)
+        self.start_table("Absolute")
 
         for group in self.groups:
             for tissue in group.tissues:
@@ -794,7 +838,7 @@ class View:
         # Complete Table of Expression Values
         self.end_table()
         self.render_legend(out_image, "Absolute", efp_max, 0, less_than=False, greater_than=max_greater)
-        return out_image, max_signal, max_signal1, max_signal2, sd_alert
+        return out_image, max_signal, max_signal_gene, max_signal_gene2, sd_alert
 
     def render_relative(self, gene, threshold=0.0, grey_mask=False):
         """
@@ -809,7 +853,7 @@ class View:
         """
 
         out_image = self.colorMap.copy()
-        max_signal, max_signal1, max_signal2 = self.get_view_max_signal(gene, True)
+        max_signal, max_signal_gene, max_signal_gene2 = self.get_view_max_signal("Relative", gene)
         max_greater = False
 
         if threshold >= self.conf['minThreshold_Relative']:
@@ -826,7 +870,7 @@ class View:
 
         n = 1
         low_alert = 0
-        self.start_table(True, True)
+        self.start_table("Relative")
         for group in self.groups:
             # Get control for this group
             control = group.get_control_signal(gene)
@@ -839,15 +883,20 @@ class View:
 
                 (signal, stddev) = tissue.get_mean_signal(gene)
 
-                if (signal is None) or (control is None) or (signal == 0) or (control == 0) or (max_log2 == 0):
+                if (signal is None) or (control is None) or (signal == 0) or (control == 0):
                     ratio_log2 = None
                     color = (221, 221, 221)  # Masked
                     low_alert = 1
                     self.append_table("Relative", tissue, ratio_log2, n, True, None, signal, control, tissue.colorKey)
                 else:
                     ratio_log2 = math.log(signal / control) / log2
-                    intensity = int(math.floor(255 * (ratio_log2 / max_log2)))
-                    intensity = clamp(intensity, -255, 255)
+
+                    if max_log2 == 0:
+                        intensity = 0
+                    else:
+                        intensity = int(math.floor(255 * (ratio_log2 / max_log2)))
+
+                    intensity = self._clamp(intensity, -255, 255)
 
                     if signal <= 20 and grey_mask == "on":
                         low_alert = 1
@@ -873,7 +922,7 @@ class View:
         self.end_table()
         self.render_legend(out_image, "Log2 Ratio", max_log2, -max_log2, less_than=max_greater,
                            greater_than=max_greater, is_relative=True)
-        return out_image, max_signal, max_signal1, max_signal2, low_alert
+        return out_image, max_signal, max_signal_gene, max_signal_gene2, low_alert
 
     def render_comparison(self, gene1, gene2, threshold=0.0):
         """
@@ -886,7 +935,7 @@ class View:
         :return: A PIL Image object containing the final rendered data
         """
         out_image = self.colorMap.copy()
-        max_signal, max_signal1, max_signal2 = self.get_view_max_signal(gene1, False, gene2=gene2)
+        max_signal, max_signal_gene, max_signal_gene2 = self.get_view_max_signal("Compare", gene1, gene2)
         max_greater = False
 
         if threshold >= self.conf['minThreshold_Compare']:
@@ -904,7 +953,7 @@ class View:
         log2 = math.log(2)
 
         n = 1
-        self.start_table(True, False)
+        self.start_table("Compare")
         for group in self.groups:
             # Get control data
             control1 = group.get_control_signal(gene1)
@@ -929,8 +978,12 @@ class View:
                     ratio1_log = math.log(sig1 / control1) / log2
                     ratio2_log = math.log(sig2 / control2) / log2
 
-                    intensity = int((ratio1_log - ratio2_log) * 255.0 / efp_max)
-                    intensity = clamp(intensity, -255, 255)
+                    if efp_max == 0:
+                        intensity = 0
+                    else:
+                        intensity = int((ratio1_log - ratio2_log) * 255.0 / efp_max)
+
+                    intensity = self._clamp(intensity, -255, 255)
 
                     if intensity is None:
                         color = (221, 221, 221)
@@ -951,7 +1004,7 @@ class View:
 
         self.render_legend(out_image, "Log2 Ratio", efp_max, -efp_max, less_than=max_greater, greater_than=max_greater,
                            is_relative=True)
-        return out_image, max_signal, max_signal1, max_signal2
+        return out_image, max_signal, max_signal_gene, max_signal_gene2
 
     def draw_line(self, img, signal, off_set_val, displace_val, top, bottom, color):
         draw = PIL.ImageDraw.Draw(img)
@@ -960,7 +1013,7 @@ class View:
         offset_x = int(offset_x)
         draw.line((offset_x, top, offset_x, bottom), fill=color)
 
-    def draw_image(self, mode, max_signal_in_datasource, view_max_signal1, view_max_signal2, gene1, gene2, img):
+    def draw_image(self, mode, max_signal_in_datasource, max_signal_gene, max_signal_gene2, gene1, gene2, img):
         # save generated image in output file.
         # First clean up output folder if necessary
         file_counter = 50
@@ -1002,8 +1055,10 @@ class View:
                 # split the coords into a list and cast to integers
                 str_coords = extra.coords.split(',')
                 coords = []
+
                 for coord in str_coords:
                     coords.append(int(coord))
+
                 # draw the box using the coords list
                 draw.polygon(coords, outline=(255, 0, 0))
 
@@ -1016,12 +1071,16 @@ class View:
                         int_coord_list.append(int(intCoord))
 
         draw.text(self.conf['GENE_ID1_POS'], gene1.get_gene_id(), font=font, fill=color)
+
         if gene1.get_alias():
             draw.text(self.conf['GENE_ALIAS1_POS'], gene1.get_alias(), font=font_oblique, fill=color)
+
         if gene1.get_probeset_id():
             draw.text(self.conf['GENE_PROBESET1_POS'], gene1.get_probeset_id(), font=font_small, fill=color)
+
         if gene1.get_lookup():
             draw.text(self.conf['GENE_ORTHO1_POS'], gene1.get_lookup(), font=font, fill=color)
+
         if mode == 'Compare':
             draw.text(self.conf['GENE_ID2_POS'], gene2.get_gene_id(), font=font, fill=color)
             if gene2.get_alias():
@@ -1034,6 +1093,7 @@ class View:
             draw.line((self.conf['GENE_ID2_POS'][0], self.conf['GENE_ID2_POS'][1] + 14,
                        self.conf['GENE_ID2_POS'][0] + 8 * len(gene2.get_gene_id()), self.conf['GENE_ID2_POS'][1] + 14),
                       fill=blue)
+
             if gene2.get_probeset_id():
                 draw.text(self.conf['GENE_PROBESET2_POS'], gene2.get_probeset_id(), font=font_small, fill=color)
 
@@ -1046,7 +1106,7 @@ class View:
             data_source = 'default'
 
         # show where the maximum signal in any data source lies on the little graph
-        for (signal, color) in zip((max_signal_in_datasource, view_max_signal1, view_max_signal2),
+        for (signal, color) in zip((max_signal_in_datasource, max_signal_gene, max_signal_gene2),
                                    ('#cccccc', red, blue)):
 
             # in case view_max_signal2 is not defined
@@ -1068,30 +1128,29 @@ class View:
         img.save(outfile[1])
         return outfile[1]
 
-    def get_tissue_signal(self, gene, sample, control=0):
+    def get_tissue_signal(self, probeset_id, sample_id):
         """
         get_tissue_signal
-        :param gene:
-        :param sample:
-        :param control:
+        :param probeset_id:
+        :param sample_id:
         :return: Returns the tissue signal for a given gene ID
         """
-        sample_id = sample.name
+        signal = None
+
         if self.conn is None:
             self.connect()
 
         cursor = self.conn.cursor()
         cursor.execute(
             "SELECT data_signal FROM " + self.conf['DB_DATA_TABLE'] + " WHERE data_probeset_id=%s AND data_bot_id=%s",
-            (gene.get_probeset_id(), sample_id))
+            (probeset_id, sample_id))
         row = cursor.fetchone()
-        signal = None
+
         if row:
             signal = row[0]
+
         cursor.close()
 
-        # To debug weird errors uncomment this.
-        # print("Gene: %s, Sample: %s, Signal: %s" % (gene.get_probeset_id(), sample_id, signal), file=sys.stderr)
         return signal
 
     def get_max_in_data_source(self, gene):
@@ -1114,7 +1173,6 @@ class View:
                 spec = Specimen(self.conf)
                 spec.load("%s/%s.xml" % (self.conf['dataDir'], data_source))
                 view = list(spec.get_views().values())[0]  # take first view in account for efp_max signal
-                gene = view.alter_gene(gene)
                 if gene is not None:
                     max_signal, max_sample = view.get_max_signal(gene)
 
