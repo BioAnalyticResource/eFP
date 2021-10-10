@@ -8,6 +8,7 @@ import PIL.ImageDraw
 import PIL.ImageFont
 import lxml.sax
 import math
+import re
 from lxml import etree
 from xml.sax.handler import ContentHandler
 from . import efpBase
@@ -24,7 +25,7 @@ import pylab
 import numpy as np
 
 
-class Sample(object):
+class Sample:
     def __init__(self, name, view):
         self.name = name
         self.view = view
@@ -201,20 +202,30 @@ class View:
         @param n the column that contains the gene agis
         """
         gene_list = []
+
+        # Check if file name is empty
+        if file_name is None:
+            return gene_list
+
         try:
             gene_file = open(file_name, 'r')
-            column = n
+            column = int(n)
             lines = gene_file.readlines()
 
             # appends each gene agi to the gene list if the line contains a gene name
             for i in range(1, len(lines)):
+                lines[i] = lines[i].strip()
                 s = lines[i].split('\t')
+
                 if s[column] and (not s[column][0] == '#'):
                     gene_list.append(s[column])
 
             gene_file.close()
-        except IOError as e:
-            print("Exception while reading file %s: %d %s" % (file_name, e[0], e[1]))
+        except FileNotFoundError:
+            print('Content-Type: text/html\n')
+            print("A data (txt) file is not found. Please contact us.")
+            exit()
+
         return gene_list
 
     def add_extra(self, extra):
@@ -549,8 +560,9 @@ class View:
         """
         out = '<map name="imgmap_%s">' % self.name
         log2 = math.log(2)
+        # This is for eFP Human and eFP Tomato
+        zero_gene = False
 
-        # Note zero_gene feature of eFP Human is not implemented yet
         for extra in self.extras:
             if extra.parameters:
                 if useT is None:
@@ -571,13 +583,14 @@ class View:
                     # is a heat map button
                 else:
                     gene_list = self._get_gene_list(extra.check, extra.checkColumn)
-
                     # if the searched gene is contained in the heatmap list, activate the link
                     # if extra.button = 1, then gene1 is contained in the list
                     # if extra.button = 2, then gene2 is contained in the list
                     # if extra.button = 3, then both genes are contained in the list
                     if gene1.get_gene_id() in gene_list:
                         extra.button = 1
+                        if self.conf['species'] in ["TOMATO", "HUMAN"]:
+                            zero_gene = True
                     if gene2.get_gene_id() in gene_list:
                         extra.button = 2
                     if (gene1.get_gene_id() in gene_list) and (gene2.get_gene_id() in gene_list):
@@ -641,7 +654,7 @@ class View:
                                 (signal == 0) or (value2 == 0) or (control == 0) or (control2 == 0):
                             sig_string = "No data available"
                         else:
-                            # No nones or zerrors
+                            # No nones or zeros
                             signal = math.log(signal / control) / log2
                             signal2 = math.log(value2 / control2) / log2
                             signal = signal - signal2
@@ -666,7 +679,7 @@ class View:
         out += '<area shape="polygon" coords="%s" title="The red line indicates the maximum expression of your primary gene, while the blue line, if present, indicates the maximum expression of your secondary gene" href="http://bbc.botany.utoronto.ca/affydb/BAR_instructions.html#efp_distro_%s">\n' % (
             coords, self.database)
         out += '</map>'
-        return out
+        return out, zero_gene
 
     def render_legend(self, img, title, efp_max, efp_min, stages=11, less_than=True, greater_than=True,
                       is_relative=False):
@@ -1059,8 +1072,12 @@ class View:
                 for coord in str_coords:
                     coords.append(int(coord))
 
-                # draw the box using the coords list
-                draw.polygon(coords, outline=(255, 0, 0))
+                # eFP Tomato uses a * instead of a box
+                if self.conf['species'] == 'TOMATO':
+                    draw.text((coords[0], coords[1]), "*", font=font, fill=(0, 0, 0))
+                else:
+                    # draw the box using the coords list
+                    draw.polygon(coords, outline=(255, 0, 0))
 
         for group in self.groups:
             for tissue in group.tissues:
@@ -1224,7 +1241,35 @@ class View:
         :param gene:
         :return:
         """
-        gene.webservice_gene = gene.gene_id
+        if self.conf["species"] == "MAIZE":
+            if gene.gene_id is not None:
+
+                if self.database == "maize_RMA_linear":
+                    maize_convert1 = re.match("^GRMZM(2|5)G[0-9]{6}$", gene.gene_id)
+                    maize_convert2 = re.match("^AC[0-9]{6}\.[0-9]{1}_FG[0-9]{3}$", gene.gene_id)
+
+                    if maize_convert1 is not None:
+                        gene.retrieve_lookup_gene_data(gene.gene_id)
+
+                    if maize_convert2 is not None:
+                        gene.gene_id = gene.gene_id.replace("FG", "FGT")
+
+                if self.database == "maize_iplant" or self.database == "maize_ears" or self.database == "maize_leaf_gradient" or self.database == "maize_rice_comparison":
+                    maize_convert3 = re.match("GRMZM(2|5)G[0-9]{6}_T[0-9]{1,2}", gene.gene_id)
+                    maize_convert4 = re.match("^AC[0-9]{6}\.[0-9]{1}_FGT[0-9]{3}$", gene.gene_id)
+
+                    if maize_convert3 is not None:
+                        gene.gene_id = re.sub("_T[0-9]{1,2}", "", gene.gene_id)
+
+                    if maize_convert4 is not None:
+                        gene.gene_id = gene.gene_id.replace("FGT", "FG")
+
+                if self.database == "maize_gdowns":
+                    return gene
+
+        else:
+            gene.webservice_gene = gene.gene_id
+
         return gene
 
     def alter_webservice_gene(self, gene):
@@ -1233,7 +1278,20 @@ class View:
         :param gene:
         :return:
         """
-        gene.webservice_gene = gene.gene_id
+        if self.conf["species"] == "MAIZE":
+            if gene.gene_id is not None:
+                maize_convert1 = re.match("^GRMZM(2|5)G[0-9]{6}$", gene.gene_id)
+                maize_convert2 = re.match("^AC[0-9]{6}\.[0-9]{1}_FG[0-9]{3}$", gene.gene_id)
+                maize_sp1 = "_T01"
+                if maize_convert1 is not None:
+                    gene.webservice_gene = gene.gene_id + maize_sp1
+                elif maize_convert2 is not None:
+                    gene.webservice_gene = gene.gene_id.replace("FG", "FGT")
+                else:
+                    gene.webservice_gene = gene.gene_id
+        else:
+            gene.webservice_gene = gene.gene_id
+
         return gene
 
 
@@ -1273,8 +1331,22 @@ class SpecimenHandler(ContentHandler):
             self.currentView.legendSize = legend_size
 
         if name == 'extra':
-            e = Extra(attrs.getValueByQName('name'), attrs.getValueByQName('link'), attrs.get("parameters"),
-                      attrs.getValueByQName('coords'), attrs.get('check'), attrs.get('check_column'))
+            # These two are optional and not in all XML files. So try first
+            check_value = None
+            check_column = None
+
+            try:
+                check_value = attrs.getValueByQName('check')
+            except KeyError:
+                check_value = None
+
+            try:
+                check_column = attrs.getValueByQName('checkColumn')
+            except KeyError:
+                check_column = None
+
+            e = Extra(attrs.getValueByQName('name'), attrs.getValueByQName('link'), attrs.getValueByQName("parameters"),
+                      attrs.getValueByQName('coords'), check_value, check_column)
             self.currentView.add_extra(e)
 
         if name == 'group':
