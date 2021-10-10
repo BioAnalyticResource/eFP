@@ -223,8 +223,12 @@ def process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, 
                     alert_strings.append(alert_str)
 
                 # Otherwise, we render and display the option
-                img_map[view.name] = view.get_image_map(mode, gene1, gene2, useThreshold, threshold, dataSource,
+                img_map[view.name], zero_gene = view.get_image_map(mode, gene1, gene2, useThreshold, threshold, dataSource,
                                                         grey_low, grey_stddev)
+
+                # The zero expression genes of eFP Human and eFP Tomato
+                if zero_gene:
+                    alert_strings.append('<font color="red">Some samples for this gene have expression values of 0.<br>')
 
             if img:
                 img_filename[view.name] = view.draw_image(mode, max_signal_in_data_source, view_max_signal1,

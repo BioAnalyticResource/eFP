@@ -60,6 +60,37 @@ if efpConfig.species == "SOYBEAN":
         if (secondaryGene is not None) and re.search(r'\.\d$', secondaryGene):
             secondaryGene = re.sub(r'\.\d$', '', secondaryGene)
 
+# Fix eFP Wheat IDs
+if efpConfig.species == "WHEAT":
+    # This makes eFP Work for both v1.0 and v1.1 genes
+    if primaryGene is not None:
+        if dataSource in ["Wheat_Abiotic_Stress", "Wheat_Meiosis"]:
+            # V1.1 only
+            if re.search(r"(.+1G.+)", primaryGene):
+                primaryGene = re.sub(r"1G", "2G", primaryGene)
+            if re.search(r"(\d\d\d$)", primaryGene):
+                primaryGene = primaryGene + ".1"
+        else:
+            # V1.0 only
+            if re.search(r"(.+2G.+)", primaryGene):
+                primaryGene = re.sub(r"2G", "1G", primaryGene)
+            if re.search(r"(\.\d$)", primaryGene):
+                primaryGene = re.sub(r"\.\d$", "", primaryGene)
+
+    if secondaryGene is not None:
+        if dataSource in ["Wheat_Abiotic_Stress", "Wheat_Meiosis"]:
+            # V1.1 only
+            if re.search(r"(.+1G.+)", secondaryGene):
+                secondaryGene = re.sub(r"1G", "2G", secondaryGene)
+            if re.search(r"(\d\d\d$)", secondaryGene):
+                secondaryGene = secondaryGene + ".1"
+        else:
+            # V1.0 only
+            if re.search(r"(.+2G.+)", secondaryGene):
+                secondaryGene = re.sub(r"2G", "1G", secondaryGene)
+            if re.search(r"(\.\d$)", secondaryGene):
+                secondaryGene = re.sub(r"\.\d$", "", secondaryGene)
+
 # Open test file here if required
 # testing_efp = open(efpConfig.OUTPUT_FILES + "/testing_efpweb.txt", "w")
 
@@ -99,9 +130,9 @@ print('    regId = /%s/i;' % efpConfig.inputRegEx)
 print('  </script>')
 print('  <script src="%s/domcollapse.js"></script>' % efpConfig.STATIC_FILES_WEB)
 print('</head>')
-
+print('')
 print('<body><form action="efpWeb.cgi" name="efpForm" method="POST" onSubmit="return checkAGIs()">')
-print('<table width="788" border="0" align="center" cellspacing="1" cellpadding="0">')
+print('<table width="1100" border="0" align="center" cellspacing="1" cellpadding="0">')
 print('<tr><td>')
 print('  <span style="float:right; top:0px; left:538px; width:250px; height:75px;">')
 print('    <script src="%s/popup.js"></script>' % efpConfig.STATIC_FILES_WEB)
@@ -180,15 +211,21 @@ else:
 if mode == 'Relative':
     print('    <option>Absolute</option>')
     print('    <option selected>Relative</option>')
-    print('    <option>Compare</option>')
+    # Skip Compare mode on eFP Maize
+    if dataSource not in ["maize_leaf_gradient", "maize_rice_comparison", "rice_leaf_gradient", "rice_maize_comparison"]:
+        print('    <option>Compare</option>')
 elif mode == 'Compare':
     print('    <option>Absolute</option>')
     print('    <option>Relative</option>')
-    print('    <option selected>Compare</option>')
+    # Skip Compare mode on eFP Maize
+    if dataSource not in ["maize_leaf_gradient", "maize_rice_comparison", "rice_leaf_gradient", "rice_maize_comparison"]:
+        print('    <option>Compare</option>')
 else:  # Default (Absolute)
     print('    <option selected>Absolute</option>')
     print('    <option>Relative</option>')
-    print('    <option>Compare</option>')
+    # Skip Compare mode on eFP Maize
+    if dataSource not in ["maize_leaf_gradient", "maize_rice_comparison", "rice_leaf_gradient", "rice_maize_comparison"]:
+        print('    <option>Compare</option>')
 
 print('      </select></td><td>')
 print('      <input type="text" id="g1" name="primaryGene" value="%s" size=17/></td><td>' % primaryGene)
@@ -206,8 +243,8 @@ print('      /></td>')
 print('      <td><input type="submit" value="Go"/></td></tr>')
 print('    </table>')
 print('</td></tr>')
-print('<tr><td>')
 
+print('<tr><td>')
 if error:
     print('    <ul>')
     for row in error_strings:
@@ -230,19 +267,45 @@ if len(alert_strings) > 0:
     print('    <ul>')
     for row in alert_strings:
         print('<li>%s</li>' % row)
+
+    # eFP Wheat stuff
+    if efpConfig.species == "WHEAT":
+        homoeologues = gene1.get_homoeologues()
+
+        if len(homoeologues) > 0:
+            print('<li>Please see homoeologues of primary gene: ')
+
+            for homoeolog in homoeologues:
+                if homoeolog == gene1.gene_id:
+                    pass
+                else:
+                    print("<a href='efpWeb.cgi?dataSource=%s&mode=%s&primaryGene=%s&secondaryGene=%s&override=%s&threshold=%s&modeMask_low=%s'>%s</a> " % (
+                            dataSource, mode, homoeolog, secondaryGene, useThreshold, threshold, grey_low, homoeolog))
+
+            print('</li>')
+
     print('    </ul>')
+print('</td></tr>')
 
 if mode and error == 0:
     # check external services
     # Serialize services data from XML file into a Info object
     info = efpService.Info()
     if info.load("%s/efp_info.xml" % efpConfig.dataDir) is None:
-        print('<table style="margin-left:auto; margin-right:0;"><tr>')
+        # print('<table style="margin-left:auto; margin-right:0;"><tr>') Deleted for now
         for name in (info.get_services()):
             service = info.get_service(name)
             external = service.get_external()
+
+            # eFP Maize stuff
+            if name == "Metabolite" or name == "Enzyme":
+                MaizeConvert3 = re.match(r"GRMZM(2|5)G[0-9]{6}_T[0-9]{1,2}", webservice_gene1.webservice_gene)
+                if MaizeConvert3 is not None:
+                    webservice_gene1.webservice_gene = re.sub(r"_T[0-9]{1,2}", "", webservice_gene1.webservice_gene)
+
             highlight1 = service.check_service(webservice_gene1.webservice_gene)
             highlight2 = None
+
             if mode == 'Compare':
                 highlight2 = service.check_service(webservice_gene2.webservice_gene)
             if highlight1 == 'error' or highlight2 == 'error':
@@ -274,12 +337,12 @@ if mode and error == 0:
                 print(
                     '<td><img target="_blank" title="%s found for gene %s" width="50" height="50" alt="%s found for %s" src="%s/%s"></td>' % (
                         name, gene, name, gene, efpConfig.dataDirWeb, service.icon))
-        print('</tr></table>')
+        # print('</tr></table>') Deleted for now
 
     # print the image
     view_no = 1
     for view_name in views:
-        print('<tr><td>')
+        print('<tr align="center"><td>')
         imgFile = img_filename[view_name]
         temp_imgPath = img_filename[view_name].split("/")
         last_element = temp_imgPath[-1]
@@ -373,9 +436,10 @@ if mode and error == 0:
     print('</td></tr>')
     print('<tr><td></td></tr>')
 else:
+    print('<tr align="center"><td>')
     print('  <img src="%s" border="0">' % default_img_filename)
+    print('</td></tr>')
 print('</table>')
-print('<input type=hidden name="orthoListOn" id="orthoListOn" value=\"0\">')
 print('</form>')
 print('</body>')
 print('</html>')
