@@ -1,7 +1,10 @@
 #!/usr/bin/python3
 import cgi
+import operator
 import os
 import re
+import sys
+
 from efp import efpConfig, efpService, efpBase
 
 form = cgi.FieldStorage(keep_blank_values=1)
@@ -60,6 +63,13 @@ if efpConfig.species == "SOYBEAN":
         if (secondaryGene is not None) and re.search(r'\.\d$', secondaryGene):
             secondaryGene = re.sub(r'\.\d$', '', secondaryGene)
 
+# Fix for Marchantia
+if efpConfig.species == "MARCHANTIA":
+    if (primaryGene is not None) and (re.search(r"\.\d$", primaryGene) is None):
+        primaryGene += ".1"
+    if (secondaryGene is not None) and (re.search(r"\.\d$", secondaryGene) is None):
+        secondaryGene = secondaryGene + ".1"
+
 # Fix eFP Wheat IDs
 if efpConfig.species == "WHEAT":
     # This makes eFP Work for both v1.0 and v1.1 genes
@@ -106,7 +116,7 @@ CONF['webservice_gene2'] = None
 # process request
 (default_img_filename, error, error_strings, test_alert_strings, alert_strings, webservice_gene1, webservice_gene2,
  views, img_filename, img_map, table_file, gene1, gene2, dataSource, primaryGene, secondaryGene, threshold, ncbi_gi,
- mode, useThreshold, grey_low, grey_stddev) = \
+ mode, useThreshold, grey_low, grey_stddev, max_dict) = \
     efpBase.process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, mode, useThreshold, grey_low,
                             grey_stddev, CONF)
 
@@ -131,16 +141,18 @@ print('  </script>')
 print('  <script src="%s/domcollapse.js"></script>' % efpConfig.STATIC_FILES_WEB)
 print('</head>')
 print('')
-print('<body><form action="efpWeb.cgi" name="efpForm" method="POST" onSubmit="return checkAGIs()">')
-print('<table width="1100" border="0" align="center" cellspacing="1" cellpadding="0">')
-print('<tr><td>')
-print('  <span style="float:right; top:0px; left:538px; width:250px; height:75px;">')
-print('    <script src="%s/popup.js"></script>' % efpConfig.STATIC_FILES_WEB)
-print('  </span>')
-print(
-    "<h1 style='vertical-align:middle;'><a href='//bar.utoronto.ca'><img src='//bar.utoronto.ca/bbc_logo_small.gif' alt='To the Bio-Array Resource Homepage' border=0 align=absmiddle></a>&nbsp;<img src='//bar.utoronto.ca/bar_logo.gif' alt='The Bio-Array Resource' border=0 align=absmiddle>&nbsp;<img src='//bar.utoronto.ca/images/eFP_logo_large.png' align=absmiddle border=0>&nbsp;%s eFP Browser<br><img src='//bar.utoronto.ca/images/green_line.gif' width=98%% alt='' height='6px' border=0></h1>" % \
+print('<body>')
+print('  <form action="efpWeb.cgi" name="efpForm" method="POST" onSubmit="return checkAGIs()">')
+print('  <table width="1100px" border="0" align="center" cellspacing="1" cellpadding="0">')
+print('    <tr>')
+print('      <td>')
+print('        <span style="float:right; top:0px; left:538px; width:250px; height:75px;">')
+print('          <script src="%s/popup.js"></script>' % efpConfig.STATIC_FILES_WEB)
+print('        </span>')
+print("        <h1 style='vertical-align:middle;'><a href='//bar.utoronto.ca'><img src='//bar.utoronto.ca/bbc_logo_small.gif' alt='To the Bio-Array Resource Homepage' border=0 align=absmiddle></a>&nbsp;<img src='//bar.utoronto.ca/bar_logo.gif' alt='The Bio-Array Resource' border=0 align=absmiddle>&nbsp;<img src='//bar.utoronto.ca/images/eFP_logo_large.png' align=absmiddle border=0>&nbsp;%s eFP Browser<br><img src='//bar.utoronto.ca/images/green_line.gif' width=98%% alt='' height='6px' border=0></h1>" % \
     efpConfig.spec_names[efpConfig.species])
-print('</td></tr>')
+print('      </td>')
+print('   </tr>')
 print('<tr><td align="middle">')
 print('    <table>')
 print('      <tr align = "center"><th>Data Source</th>')
@@ -292,7 +304,8 @@ if mode and error == 0:
     # Serialize services data from XML file into a Info object
     info = efpService.Info()
     if info.load("%s/efp_info.xml" % efpConfig.dataDir) is None:
-        # print('<table style="margin-left:auto; margin-right:0;"><tr>') Deleted for now
+        print('<tr><td>')
+        print('<table style="margin-left:auto;margin-right:auto"><tr>')
         for name in (info.get_services()):
             service = info.get_service(name)
             external = service.get_external()
@@ -337,7 +350,136 @@ if mode and error == 0:
                 print(
                     '<td><img target="_blank" title="%s found for gene %s" width="50" height="50" alt="%s found for %s" src="%s/%s"></td>' % (
                         name, gene, name, gene, efpConfig.dataDirWeb, service.icon))
-        # print('</tr></table>') Deleted for now
+        print('</tr></table>')
+        print('</td></tr>')
+
+    # Tabular Navigation
+    if len(max_dict.items()) != 0:
+        colour_step = int(255 / len(max_dict.items()))
+        next_colour = 255
+        repeated_data = {}
+        # This is a sorted list of tuples (source, max)
+        data_source_max = sorted(max_dict.items(), key=operator.itemgetter(1))
+
+        if useThreshold is None:
+            useThreshold = ""
+
+        # Determine font colour and hyperlink
+        for i in range(len(data_source_max)):
+            # Background color
+            if (((255 * 299) + (next_colour * 587)) / 1000) > 160:
+                font = 'black'
+            else:
+                font = 'white'
+
+            # Hyperlink to load the new view
+            # data_source_max = (source, max, color, font, link)
+            href_link = '<a style="text-decoration:none;color:%s" href="efpWeb.cgi?dataSource=%s&mode=%s&primaryGene=%s&secondaryGene=%s&override=%s&threshold=%s&modeMask_low=%s&modeMask_stddev=%s">' % (
+                font, data_source_max[i][0], mode, gene1.gene_id, gene2.gene_id, useThreshold, threshold, grey_low, grey_stddev)
+
+            # Foreground color
+            if next_colour < 17:
+                data_source_max[i] = data_source_max[i] + ("0" + str(hex(next_colour)[-1:]), font, href_link)
+            else:
+                data_source_max[i] = data_source_max[i] + (str(hex(next_colour)[-2:]), font, href_link)
+
+            # Decrease color by color step
+            if next_colour > colour_step:
+                next_colour -= colour_step
+            else:
+                next_colour = 0
+
+        # Some eFPs, a source name is repeated like Root, Root II.
+        # Make it Root, II
+        try:
+            for counter in range(len(data_source_max)):
+                if data_source_max[counter][0] in efpConfig.repeatSources:
+                    output = list(data_source_max[counter][:])
+                    output[0] = output[0] + '_II'
+                    output[4] = '<a style="text-decoration:none;color:%s" href="efpWeb.cgi?dataSource=%s&mode=%s&primaryGene=%s&secondaryGene=%s&override=%s&threshold=%s&modeMask_low=%s&modeMask_stddev=%s">' % (
+                        output[3], output[0], mode, gene1.gene_id, gene2.gene_id, useThreshold, threshold, grey_low, grey_stddev)
+                    repeated_data[data_source_max[counter][0]] = tuple(output)
+
+            # Now add II right after I. In most cases, they are the same database.
+            for item in efpConfig.repeatSources:
+                for counter in range(len(data_source_max)):
+                    if data_source_max[counter][0] == item:
+                        data_source_max.insert(counter + 1, repeated_data[item])
+                        break
+
+            # Remove name and keep only II
+            for item in efpConfig.repeatSources:
+                for counter in range(len(data_source_max)):
+                    if data_source_max[counter][0] == item + '_II':
+                        new_item = list(data_source_max[counter])
+                        new_item[0] = "II"
+                        data_source_max[counter] = tuple(new_item)
+
+        except AttributeError:
+            pass
+
+        current_source = 0
+        while current_source < len(data_source_max):
+            if data_source_max[current_source][0] == dataSource:
+                break
+            else:
+                current_source = current_source + 1
+
+        print('<tr><td><table style="width:100;white-space:nowrap;text-align:center;margin-left:auto;margin-right:auto">')
+
+        # Append display name:
+        # data_source_max = (source, max, color, font, link, name)
+        for i in range(len(data_source_max)):
+            try:
+                if data_source_max[i][0] in efpConfig.shortNames.keys():
+                    data_source_max[i] = list(data_source_max[i])
+                    data_source_max[i].append(data_source_max[i][0].replace('_', ' '))
+                    data_source_max[i][0] = efpConfig.shortNames[data_source_max[i][0]]
+                    data_source_max[i] = tuple(data_source_max[i])
+                else:
+                    data_source_max[i] = list(data_source_max[i])
+                    data_source_max[i][0] = data_source_max[i][0].replace('_', ' ')
+                    data_source_max[i].append(data_source_max[i][0])
+                    data_source_max[i] = tuple(data_source_max[i])
+            except AttributeError:
+                data_source_max[i] = list(data_source_max[i])
+                data_source_max[i][0] = data_source_max[i][0].replace('_', ' ')
+                data_source_max[i].append(data_source_max[i][0])
+                data_source_max[i] = tuple(data_source_max[i])
+
+        # Append (max) to last item
+        max_key = list(data_source_max[-1])
+        max_key[0] = max_key[0] + " (max)"
+        data_source_max[-1] = tuple(max_key)
+
+        # Print the current source row
+        print('    <tr>')
+        counter = 0
+        while counter < len(data_source_max):
+            if counter == current_source:
+                print('        <td bgcolor="#%s%s%s" rowspan=2><table style="border:1px solid black"><tr><td><span title="%s: %s"><font color="%s" style="font-weight:bold">%s<b><u>%s</u></b></a></font></span></td></tr></table></td>' % (
+                    data_source_max[counter][2], data_source_max[counter][2], data_source_max[counter][2], data_source_max[counter][5],
+                    round(data_source_max[counter][1][0], 2), data_source_max[counter][3], data_source_max[counter][4], data_source_max[counter][0]))
+            else:
+                print('<td></td>')
+            counter = counter + 1
+        print('    </tr>')
+
+        # print rest of selections
+        print('    <tr>')
+        counter = 0
+        while counter < len(data_source_max):
+            if counter == current_source:
+                print('     ')
+            elif data_source_max[counter][1]:
+                # Asher 2018: Fails if one of the views doesn't have data.
+                print('        <td bgcolor="#%s%s%s"><span title="%s: %s"><font color="%s">%s<u>%s</u></a></font></span></td>' % (
+                    data_source_max[counter][2], data_source_max[counter][2], data_source_max[counter][2], data_source_max[counter][5],
+                    round(data_source_max[counter][1][0], 2), data_source_max[counter][3], data_source_max[counter][4],
+                    data_source_max[counter][0].replace('_', ' ')))
+            counter = counter + 1
+        print('    </tr>')
+        print('</table></td></tr>')
 
     # print the image
     view_no = 1
