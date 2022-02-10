@@ -1204,6 +1204,32 @@ class View:
 
         return overall_max, max_data_source
 
+    def get_max_in_datasource_dict(self, gene):
+        """
+        This if for the max table
+        @param gene:
+        @return:
+        """
+
+        output = {}
+        for data_source in self.conf['groupDatasource'][self.dbGroup]:
+            if data_source == self.name:
+                max_signal = self.get_max_signal(gene)
+            else:
+                spec = Specimen(self.conf)
+                spec.load("%s/%s.xml" % (self.conf['dataDir'], data_source))
+                view = list(spec.get_views().values())[0]  # take first view in account for max signal
+                gene = view.alter_gene(gene)
+                max_signal = view.get_max_signal(gene)
+
+            # If max signal is None, eFP Crashes!
+            if max_signal[0] is None or max_signal[1] is None:
+                output[data_source] = (0, "")
+            else:
+                output[data_source] = max_signal
+
+        return output
+
     def get_max_signal(self, gene):
         if self.conn is None:
             self.connect()

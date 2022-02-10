@@ -36,6 +36,7 @@ def process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, 
     img_filename = {}
     table_file = {}
     views = []
+    max_dict = {}
 
     webservice_gene1 = None
     webservice_gene2 = None
@@ -159,6 +160,9 @@ def process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, 
                             " of <b>%s</b> in the <b>%s</b> data source." % (
                                 view.dbGroup, max_signal_in_data_source, max_data_source)
                 alert_strings.append(alert_str)
+
+                # find the max accross all sourse
+                max_dict = view.get_max_in_datasource_dict(gene1)
 
                 # alert the user that the scale has changed if no threshold is set
                 if useThreshold is None and first_call != 1:
@@ -301,7 +305,7 @@ def process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, 
 
     return default_img_filename, error, error_strings, test_alert_strings, alert_strings, webservice_gene1, \
            webservice_gene2, views, img_filename, img_map, table_file, gene1, gene2, dataSource, primaryGene, \
-           secondaryGene, threshold, ncbi_gi, mode, useThreshold, grey_low, grey_stddev
+           secondaryGene, threshold, ncbi_gi, mode, useThreshold, grey_low, grey_stddev, max_dict
 
 
 def find_xml(data_dir):
