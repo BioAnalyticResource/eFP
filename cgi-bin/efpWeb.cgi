@@ -16,9 +16,15 @@ secondaryGene = form.getvalue("secondaryGene")
 ncbi_gi = form.getvalue("ncbi_gi")
 threshold = form.getvalue("threshold")
 mode = form.getvalue("mode")
+mode_input = form.getvalue("modeInput")
 useThreshold = form.getvalue("useThreshold")
 grey_low = form.getvalue("grey_low")
 grey_stddev = form.getvalue("grey_stddev")
+nav_bar = form.getvalue("navbar")
+
+if mode_input is not None:
+    if mode_input != "":
+        mode = mode_input
 
 # Validate CGI inputs:
 if dataSource and re.search(r"^[\d\D\s\-_]{0,48}$", dataSource) is None:
@@ -47,6 +53,11 @@ if grey_low and re.search(r"^(on)|(None)$", grey_low) is None:
 
 if grey_stddev and re.search(r"^(on)|(None)$", grey_stddev) is None:
     efpBase.clean_exit("Grey low is invalid.")
+
+if nav_bar == "0":
+    nav_bar = False
+else:
+    nav_bar = True
 
 
 # Fix soybean IDs
@@ -118,7 +129,7 @@ CONF['webservice_gene2'] = None
  views, img_filename, img_map, table_file, gene1, gene2, dataSource, primaryGene, secondaryGene, threshold, ncbi_gi,
  mode, useThreshold, grey_low, grey_stddev, max_dict) = \
     efpBase.process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, mode, useThreshold, grey_low,
-                            grey_stddev, CONF)
+                            grey_stddev, nav_bar,  CONF)
 
 # HTML header
 print('Content-Type: text/html\n')
@@ -231,7 +242,7 @@ elif mode == 'Compare':
     print('    <option>Relative</option>')
     # Skip Compare mode on eFP Maize
     if dataSource not in ["maize_leaf_gradient", "maize_rice_comparison", "rice_leaf_gradient", "rice_maize_comparison"]:
-        print('    <option>Compare</option>')
+        print('    <option selected>Compare</option>')
 else:  # Default (Absolute)
     print('    <option selected>Absolute</option>')
     print('    <option>Relative</option>')
@@ -354,7 +365,7 @@ if mode and error == 0:
         print('</td></tr>')
 
     # Tabular Navigation
-    if len(max_dict.items()) != 0:
+    if nav_bar and len(max_dict.items()) != 0:
         colour_step = int(255 / len(max_dict.items()))
         next_colour = 255
         repeated_data = {}

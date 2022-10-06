@@ -17,7 +17,7 @@ from . import efp, efpService, efpDb
 
 
 def process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, mode, useThreshold, grey_low,
-                    grey_stddev, conf):
+                    grey_stddev, nav_bar, conf):
     """
     Handles request for main web view and returns a dictionary with all values
     to be displayed
@@ -162,7 +162,8 @@ def process_request(dataSource, primaryGene, secondaryGene, threshold, ncbi_gi, 
                 alert_strings.append(alert_str)
 
                 # find the max accross all sourse
-                max_dict = view.get_max_in_datasource_dict(gene1)
+                if nav_bar:
+                    max_dict = view.get_max_in_datasource_dict(gene1)
 
                 # alert the user that the scale has changed if no threshold is set
                 if useThreshold is None and first_call != 1:
