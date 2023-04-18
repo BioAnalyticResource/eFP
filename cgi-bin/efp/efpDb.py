@@ -74,7 +74,7 @@ class Gene:
                     self.probeset_id = row[0][1]
                     return
 
-            if self.database == "maize_buell_lab" or self.database == "maize_early_seed":
+            if self.database in ["maize_buell_lab", "maize_early_seed", "maize_embryonic_leaf_development"]:
                 self.conn = None
                 self.connect(self.conf['DB_ANNO'])
                 cursor = self.conn.cursor()
@@ -97,6 +97,8 @@ class Gene:
                         self.connect("maize_buell_lab")
                     elif self.database == "maize_early_seed":
                         self.connect("maize_early_seed")
+                    elif self.database == "maize_embryonic_leaf_development":
+                        self.connect("maize_embryonic_leaf_development")
                     cursor = self.conn.cursor()
 
                     select_cmd = "SELECT data_probeset_id FROM sample_data WHERE data_probeset_id=%s"
@@ -172,13 +174,7 @@ class Gene:
 
         # This part is only for eFP Maize.
         if self.conf['species'] == "MAIZE":
-            if self.database == "maize_gdowns":
-                return
-
-            if self.database == "maize_buell_lab":
-                return
-
-            if self.database == "maize_early_seed":
+            if self.database in ["maize_gdowns", "maize_buell_lab", "maize_early_seed", "maize_embryonic_leaf_development"]:
                 return
 
         if self.conn is None:
