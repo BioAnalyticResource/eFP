@@ -8,6 +8,7 @@ import PIL.ImageDraw
 import PIL.ImageFont
 import lxml.sax
 import math
+import statistics
 import re
 from lxml import etree
 from xml.sax.handler import ContentHandler
@@ -94,7 +95,10 @@ class Tissue:
                 i += 1
 
         mean /= num_samples
-        stddev = math.sqrt(sum([(x - mean) ** 2 for x in values]) / num_samples)
+        try:
+            stddev = statistics.stdev(values)
+        except:
+            stddev = 0
         stddev = round(stddev, 2)
         return mean, stddev
 
