@@ -68,7 +68,8 @@ datasourceHeader = {'default': ''}
 
 # define additional footer text for individual data sources
 # you can use key 'default' for each not individually defined
-datasourceFooter = {'default': ''}
+datasourceFooter = {'default': '<ul><li>BAR eFP images are free to use and are released under <a href="https://creativecommons.org/licenses/by/4.0/">CC-BY</a> license. Please cite <a href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0000718">Winter <i>et al.</i> 2007</a> and the publications in the image.</li> \
+                               </ul>'}
 
 # regular expression for check of gene id input
 inputRegEx = r"^()$"
