@@ -1,13 +1,14 @@
 #!/usr/bin/python3
+
+# Ignore CGI deprecation warning
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 import cgi
 import operator
 import os
 import re
-import sys
-import warnings
 from efp import efpConfig, efpService, efpBase
-
-warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 form = cgi.FieldStorage(keep_blank_values=1)
 
@@ -29,7 +30,7 @@ if mode_input is not None:
         mode = mode_input
 
 # Validate CGI inputs:
-if dataSource and re.search(r"^[\d\D\s\-_]{0,48}$", dataSource) is None:
+if dataSource and re.search(r"^[\da-z\s\-_]{0,48}$", dataSource, re.I) is None:
     efpBase.clean_exit("Data Source is invalid")
 
 if primaryGene and re.search(efpConfig.inputRegEx, primaryGene, re.I) is None:
