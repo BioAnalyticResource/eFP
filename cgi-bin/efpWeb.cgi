@@ -4,8 +4,10 @@ import operator
 import os
 import re
 import sys
-
+import warnings
 from efp import efpConfig, efpService, efpBase
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 form = cgi.FieldStorage(keep_blank_values=1)
 
@@ -42,16 +44,16 @@ if ncbi_gi and re.search(r"^\d{0,16}$", ncbi_gi) is None:
 if threshold and re.search(r"^\d{0,16}\.*\d*$", threshold) is None:
     efpBase.clean_exit("Threshold is invalid.")
 
-if mode and re.search(r"^(Absolute)|(Relative)|(Compare)", mode) is None:
+if mode and re.search(r"^Absolute$|^Relative$|^Compare$", mode) is None:
     efpBase.clean_exit("Mode is invalid.")
 
 if useThreshold and re.search(r"^on$", useThreshold) is None:
     efpBase.clean_exit("Use Threshold is invalid.")
 
-if grey_low and re.search(r"^(on)|(None)$", grey_low) is None:
+if grey_low and re.search(r"^on$|^None$", grey_low) is None:
     efpBase.clean_exit("Grey low is invalid.")
 
-if grey_stddev and re.search(r"^(on)|(None)$", grey_stddev) is None:
+if grey_stddev and re.search(r"^on$|^None$", grey_stddev) is None:
     efpBase.clean_exit("Grey low is invalid.")
 
 if nav_bar == "0":
